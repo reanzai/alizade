@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user subscription and role information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "isSubscribed": { "type": "boolean" },
+        "subscriptionExpiresAt": { "type": "string", "format": "date-time" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" }
+      },
+      "required": ["uid", "email", "role", "isSubscribed"]
+    },
+    "GiftSettings": {
+      "title": "User Gift Settings",
+      "description": "Custom gift alert settings for each user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "settings": { "type": "object" }
+      },
+      "required": ["uid", "settings"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile and subscription status"
+    },
+    "/giftSettings/{userId}": {
+      "schema": "GiftSettings",
+      "description": "User specific gift alert configurations"
+    }
+  }
+}

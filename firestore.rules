@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "bensanayeminederim@gmail.com" && request.auth.token.email_verified == true);
+    }
+
+    function isDbAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isAnyAdmin() {
+      return isAdmin() || isDbAdmin();
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'isSubscribed']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.role in ['admin', 'user'] &&
+             data.isSubscribed is bool;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAnyAdmin();
+      
+      // Users can create their own profile
+      // Default admin can be subscribed and admin role
+      // Others must be 'user' role and not subscribed
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) &&
+                    (
+                      (isAdmin() && request.resource.data.role == 'admin' && request.resource.data.isSubscribed == true) ||
+                      (request.resource.data.role == 'user' && request.resource.data.isSubscribed == false)
+                    );
+      
+      // Only admins can update roles or subscription status
+      allow update: if isAuthenticated() && (
+        (isOwner(userId) && isValidUser(request.resource.data) && 
+         request.resource.data.role == resource.data.role && 
+         request.resource.data.isSubscribed == resource.data.isSubscribed) ||
+        isAnyAdmin()
+      );
+    }
+
+    match /giftSettings/{userId} {
+      allow read: if isOwner(userId) || isAnyAdmin();
+      allow create, update: if isOwner(userId) && 
+                            (
+                              isAdmin() || 
+                              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSubscribed == true)
+                            );
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}
