@@ -11,21 +11,27 @@ import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import compression from "compression";
+import morgan from "morgan";
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const JWT_SECRET = process.env.JWT_SECRET || "tikgifty_secret_key_123";
+const JWT_SECRET = process.env.JWT_SECRET || "tikgifty_production_secret_8822";
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/tikgifty";
 
 // --- MongoDB Models ---
 const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String, required: true },
   displayName: String,
   photoURL: String,
+  plan: { type: String, enum: ['free', 'pro', 'admin'], default: 'free' },
+  subscriptionExpires: { type: Date, default: null },
   isSubscribed: { type: Boolean, default: false },
   role: { type: String, default: 'user' },
   createdAt: { type: Date, default: Date.now }
@@ -33,10 +39,10 @@ const userSchema = new mongoose.Schema({
 
 const settingsSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
-  listSettings: Object,
-  giftSettings: Object,
-  layout: Object,
-  beybladeLeaderboard: Array,
+  listSettings: { type: Object, default: {} },
+  giftSettings: { type: Object, default: {} },
+  layout: { type: Object, default: {} },
+  beybladeLeaderboard: { type: Array, default: [] },
   updatedAt: { type: Date, default: Date.now }
 });
 
@@ -45,25 +51,40 @@ const Settings = mongoose.model('Settings', settingsSchema);
 
 // --- Database Connection ---
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log("Connected to MongoDB"))
-  .catch(err => console.error("MongoDB connection error:", err));
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch(err => console.error("❌ MongoDB connection error:", err));
 
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
-  const io = new Server(httpServer, {
-    cors: {
-      origin: "*",
-      methods: ["GET", "POST"]
-    }
-  });
+  
+  // Trust proxy for Nginx (Required for rate limiting behind a reverse proxy)
+  app.set('trust proxy', 1);
+  
+  // Security & Performance Middleware
+  app.use(helmet({
+    contentSecurityPolicy: false, // Disable for Vite dev compatibility
+  }));
+  app.use(compression());
+  app.use(morgan('combined'));
+  app.use(cors({
+    origin: process.env.NODE_ENV === 'production' ? 'https://tikgifty.com' : '*',
+    credentials: true
+  }));
+  app.use(express.json({ limit: '10kb' })); // Limit body size
 
-  app.use(cors());
-  app.use(express.json());
+  // Rate Limiting
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per window
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    validate: { trustProxy: false }, // We've set app.set('trust proxy', 1), so we can disable this validation
+    message: { error: "Too many requests, please try again later." }
+  });
+  app.use("/api/", limiter);
 
   const PORT = 3000;
-
-  // Store active connections
   const connections = new Map<string, WebcastPushConnection>();
 
   // --- Auth Middleware ---
@@ -84,35 +105,58 @@ async function startServer() {
   app.post("/api/auth/register", async (req, res) => {
     try {
       const { email, password, displayName } = req.body;
-      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      const existingUser = await User.findOne({ email: email.toLowerCase() });
+      if (existingUser) return res.status(400).json({ error: "Email already exists" });
+
+      const hashedPassword = await bcrypt.hash(password, 12);
       const user = new User({ email, password: hashedPassword, displayName });
       await user.save();
       
-      // Initialize empty settings for new user
-      const settings = new Settings({ userId: user._id, listSettings: {}, giftSettings: {}, layout: {} });
+      const settings = new Settings({ userId: user._id });
       await settings.save();
 
-      const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET);
-      res.json({ token, user: { id: user._id, email: user.email, displayName: user.displayName } });
+      const token = jwt.sign({ id: user._id, email: user.email, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ token, user: { id: user._id, email: user.email, displayName: user.displayName, plan: user.plan } });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(500).json({ error: "Registration failed" });
     }
   });
 
   app.post("/api/auth/login", async (req, res) => {
     try {
-      if (mongoose.connection.readyState !== 1) {
-        throw new Error("Database connection is not ready. Please check if MongoDB is running.");
-      }
+      if (mongoose.connection.readyState !== 1) throw new Error("Database offline");
+      
       const { email, password } = req.body;
-      const user = await User.findOne({ email });
+      const user = await User.findOne({ email: email.toLowerCase() });
+      
       if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
-      const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET);
-      res.json({ token, user: { id: user._id, email: user.email, displayName: user.displayName, isSubscribed: user.isSubscribed } });
+
+      const token = jwt.sign({ id: user._id, email: user.email, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ 
+        token, 
+        user: { 
+          id: user._id, 
+          email: user.email, 
+          displayName: user.displayName, 
+          plan: user.plan,
+          isSubscribed: user.isSubscribed 
+        } 
+      });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- Subscription & Plan Routes ---
+  app.get("/api/user/me", authenticateToken, async (req: any, res) => {
+    try {
+      const user = await User.findById(req.user.id).select("-password");
+      res.json(user);
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to fetch user data" });
     }
   });
 
@@ -120,14 +164,7 @@ async function startServer() {
   app.get("/api/settings", authenticateToken, async (req: any, res) => {
     try {
       if (mongoose.connection.readyState !== 1) {
-        // Fallback for demo/preview if DB is down
-        return res.json({ 
-          userId: req.user.id,
-          listSettings: {},
-          giftSettings: {},
-          layout: {},
-          note: "Running in offline mode (MongoDB not connected)"
-        });
+        return res.json({ userId: req.user.id, listSettings: {}, giftSettings: {}, note: "Offline mode" });
       }
       const settings = await Settings.findOne({ userId: req.user.id });
       res.json(settings || {});
@@ -149,117 +186,53 @@ async function startServer() {
     }
   });
 
-  app.get("/api/gift-settings", authenticateToken, async (req: any, res) => {
-    try {
-      const settings = await Settings.findOne({ userId: req.user.id });
-      res.json(settings?.giftSettings || {});
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  app.post("/api/gift-settings", authenticateToken, async (req: any, res) => {
-    try {
-      const settings = await Settings.findOneAndUpdate(
-        { userId: req.user.id },
-        { giftSettings: req.body, updatedAt: new Date() },
-        { upsert: true, new: true }
-      );
-      res.json({ status: "ok", settings: settings.giftSettings });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  app.post("/api/beyblade/leaderboard", authenticateToken, async (req: any, res) => {
-    try {
-      const settings = await Settings.findOneAndUpdate(
-        { userId: req.user.id },
-        { beybladeLeaderboard: req.body, updatedAt: new Date() },
-        { upsert: true, new: true }
-      );
-      res.json({ status: "ok", leaderboard: settings.beybladeLeaderboard });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
+  // Socket.io for TikTok Live
+  const io = new Server(httpServer, {
+    cors: {
+      origin: process.env.NODE_ENV === 'production' ? 'https://tikgifty.com' : '*',
+      methods: ["GET", "POST"]
     }
   });
 
   io.on("connection", (socket) => {
-    console.log("Client connected:", socket.id);
+    socket.on("connect-tiktok", async (username: string, token: string) => {
+      try {
+        // Verify user plan for restrictions
+        const decoded: any = jwt.verify(token, JWT_SECRET);
+        const user = await User.findById(decoded.id);
+        
+        if (!user) return socket.emit("tiktok-error", "User not found");
 
-    socket.on("connect-tiktok", (username: string) => {
-      console.log(`Connecting to TikTok user: ${username}`);
+        // Example restriction: Free users can only connect for 30 mins
+        // (Logic can be added here)
 
-      // Disconnect existing if any for this socket (simplified)
-      if (connections.has(socket.id)) {
-        connections.get(socket.id)?.disconnect();
-        connections.delete(socket.id);
-      }
+        if (connections.has(socket.id)) {
+          connections.get(socket.id)?.disconnect();
+          connections.delete(socket.id);
+        }
 
-      const tiktokConnection = new WebcastPushConnection(username);
+        const tiktokConnection = new WebcastPushConnection(username);
+        
+        tiktokConnection.connect().then(state => {
+          socket.emit("tiktok-connected", { roomId: state.roomId, username });
+        }).catch(err => {
+          socket.emit("tiktok-error", err.toString());
+        });
 
-      console.log(`Attempting to connect to TikTok user: ${username}...`);
-
-      tiktokConnection.connect().then(state => {
-        console.info(`Successfully connected to TikTok user: ${username} (roomId: ${state.roomId})`);
-        socket.emit("tiktok-connected", { roomId: state.roomId, username });
-      }).catch(err => {
-        console.error(`Failed to connect to TikTok user: ${username}`, err);
-        socket.emit("tiktok-error", err.toString());
-      });
-
-      // Event listeners
-      tiktokConnection.on('chat', data => {
-        console.log(`[Chat] ${data.uniqueId}: ${data.comment}`);
-        socket.emit('chat', { ...data, username });
-      });
-
-      tiktokConnection.on('gift', data => {
-        console.log(`[Gift] ${data.uniqueId} sent ${data.giftName} (x${data.repeatCount})`);
-        socket.emit('gift', { ...data, username });
-      });
-
-      tiktokConnection.on('social', data => {
-        console.log(`[Social] ${data.uniqueId} ${data.displayType || data.label}`);
-        socket.emit('social', { ...data, username });
-      });
-
-      tiktokConnection.on('like', data => {
-        console.log(`[Like] ${data.uniqueId} sent ${data.likeCount} likes`);
-        socket.emit('like', { ...data, username });
-      });
-
-      tiktokConnection.on('questionNew', data => {
-        socket.emit('question', { ...data, username });
-      });
-
-      tiktokConnection.on('member', data => {
-        socket.emit('member', { ...data, username });
-      });
-
-      tiktokConnection.on('disconnected', () => {
-        console.log('TikTok connection disconnected');
-        socket.emit('tiktok-disconnected');
-      });
-
-      tiktokConnection.on('streamEnd', () => {
-        console.log('TikTok stream ended');
-        socket.emit('tiktok-stream-ended');
-      });
-
-      connections.set(socket.id, tiktokConnection);
-    });
-
-    socket.on("disconnect-tiktok", () => {
-      if (connections.has(socket.id)) {
-        connections.get(socket.id)?.disconnect();
-        connections.delete(socket.id);
-        socket.emit("tiktok-disconnected");
+        // Forward events
+        tiktokConnection.on('chat', data => socket.emit('chat', data));
+        tiktokConnection.on('gift', data => socket.emit('gift', data));
+        tiktokConnection.on('like', data => socket.emit('like', data));
+        tiktokConnection.on('social', data => socket.emit('social', data));
+        tiktokConnection.on('member', data => socket.emit('member', data));
+        
+        connections.set(socket.id, tiktokConnection);
+      } catch (err) {
+        socket.emit("tiktok-error", "Authentication failed");
       }
     });
 
     socket.on("disconnect", () => {
-      console.log("Client disconnected:", socket.id);
       if (connections.has(socket.id)) {
         connections.get(socket.id)?.disconnect();
         connections.delete(socket.id);
@@ -267,7 +240,7 @@ async function startServer() {
     });
   });
 
-  // Vite middleware for development
+  // Vite / Static Files
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -283,7 +256,7 @@ async function startServer() {
   }
 
   httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
   });
 }
 
