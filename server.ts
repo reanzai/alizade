@@ -18,7 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || "tikgifty_secret_key_123";
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/tikgifty";
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/tikgifty";
 
 // --- MongoDB Models ---
 const userSchema = new mongoose.Schema({
@@ -71,10 +71,10 @@ async function startServer() {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 
-    if (!token) return res.sendStatus(401);
+    if (!token) return res.status(401).json({ error: "Unauthorized" });
 
     jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-      if (err) return res.sendStatus(403);
+      if (err) return res.status(403).json({ error: "Forbidden" });
       req.user = user;
       next();
     });
@@ -101,6 +101,9 @@ async function startServer() {
 
   app.post("/api/auth/login", async (req, res) => {
     try {
+      if (mongoose.connection.readyState !== 1) {
+        throw new Error("Database connection is not ready. Please check if MongoDB is running.");
+      }
       const { email, password } = req.body;
       const user = await User.findOne({ email });
       if (!user || !(await bcrypt.compare(password, user.password))) {
@@ -109,13 +112,23 @@ async function startServer() {
       const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET);
       res.json({ token, user: { id: user._id, email: user.email, displayName: user.displayName, isSubscribed: user.isSubscribed } });
     } catch (err: any) {
-      res.status(400).json({ error: err.message });
+      res.status(500).json({ error: err.message });
     }
   });
 
   // --- Settings Routes ---
   app.get("/api/settings", authenticateToken, async (req: any, res) => {
     try {
+      if (mongoose.connection.readyState !== 1) {
+        // Fallback for demo/preview if DB is down
+        return res.json({ 
+          userId: req.user.id,
+          listSettings: {},
+          giftSettings: {},
+          layout: {},
+          note: "Running in offline mode (MongoDB not connected)"
+        });
+      }
       const settings = await Settings.findOne({ userId: req.user.id });
       res.json(settings || {});
     } catch (err: any) {

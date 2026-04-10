@@ -862,13 +862,21 @@ export default function App() {
         fetch('/api/settings', {
           headers: { 'Authorization': `Bearer ${authToken}` }
         })
-        .then(res => {
+        .then(async res => {
           if (res.status === 401 || res.status === 403) {
             setAuthToken(null);
             localStorage.removeItem('tikgifty_token');
             return null;
           }
-          return res.json();
+          
+          const contentType = res.headers.get("content-type");
+          if (contentType && contentType.indexOf("application/json") !== -1) {
+            return res.json();
+          } else {
+            const text = await res.text();
+            console.error("Non-JSON response from server:", text);
+            return null;
+          }
         })
         .then(data => {
           if (data) {
@@ -1290,6 +1298,13 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password })
         });
+        
+        const contentType = res.headers.get("content-type");
+        if (!contentType || contentType.indexOf("application/json") === -1) {
+          const text = await res.text();
+          throw new Error(text || "Server returned an invalid response");
+        }
+
         const data = await res.json();
         if (data.token) {
           localStorage.setItem('tikgifty_token', data.token);
@@ -1320,6 +1335,13 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password, displayName })
         });
+        
+        const contentType = res.headers.get("content-type");
+        if (!contentType || contentType.indexOf("application/json") === -1) {
+          const text = await res.text();
+          throw new Error(text || "Server returned an invalid response");
+        }
+
         const data = await res.json();
         if (data.token) {
           localStorage.setItem('tikgifty_token', data.token);
