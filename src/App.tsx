@@ -14,6 +14,7 @@ import {
   Activity,
   Zap,
   Volume2,
+  VolumeX,
   Bell,
   Search,
   Trophy,
@@ -52,7 +53,9 @@ import {
   Flame,
   Snowflake,
   Orbit,
-  Ghost
+  Ghost,
+  Save,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import dayjs from 'dayjs';
@@ -94,6 +97,9 @@ interface TikTokAction {
   description: string;
   ttsEnabled?: boolean;
   ttsTemplate?: string;
+  ttsVoice?: string;
+  textColor?: string;
+  fontSize?: string;
 }
 
 interface TikTokEventTrigger {
@@ -121,6 +127,15 @@ interface OverlayLayout {
   goals: OverlayElement;
   events: OverlayElement;
   alerts: OverlayElement;
+}
+
+interface OverlayPreset {
+  id: string;
+  name: string;
+  layout: OverlayLayout;
+  selectedTheme: 'minimal' | 'vibrant' | 'dark';
+  font: string;
+  accentColor: string;
 }
 
 interface OverlayScreen {
@@ -169,6 +184,8 @@ interface ActiveAlert {
   gifUrl: string;
   soundUrl: string;
   type: 'alert' | 'sound' | 'animation' | 'tts';
+  textColor?: string;
+  fontSize?: string;
 }
 
 interface WordGame {
@@ -266,7 +283,9 @@ interface ListSetting {
   enabled: boolean;
 }
 
-const IS_SELF_HOSTED = import.meta.env.VITE_SELF_HOSTED === 'true';
+const IS_SELF_HOSTED = import.meta.env.VITE_SELF_HOSTED === 'true' || 
+                       window.location.hostname === 'tikgifty.com' || 
+                       window.location.hostname === 'www.tikgifty.com';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -278,7 +297,7 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [events, setEvents] = useState<TikTokEvent[]>([]);
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'actions' | 'events' | 'overlay' | 'leaderboard' | 'settings' | 'kelime-oyunu' | 'beyblade' | 'pricing'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'actions' | 'events' | 'overlay' | 'leaderboard' | 'settings' | 'kelime-oyunu' | 'beyblade' | 'pricing' | 'about'>('dashboard');
   const [editingAction, setEditingAction] = useState<TikTokAction | null>(null);
   const [editingTrigger, setEditingTrigger] = useState<TikTokEventTrigger | null>(null);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'bot' | 'integrations' | 'account'>('general');
@@ -290,6 +309,17 @@ export default function App() {
   const [isOverlayMode, setIsOverlayMode] = useState(false);
   const [gameOverlayMode, setGameOverlayMode] = useState<'game' | 'leaderboard' | 'stream' | 'beyblade' | null>(null);
   const [selectedTheme, setSelectedTheme] = useState<'minimal' | 'vibrant' | 'dark'>('vibrant');
+  const [overlayFont, setOverlayFont] = useState<string>('font-sans');
+  const [overlayAccent, setOverlayAccent] = useState<string>('');
+  const [savedPresets, setSavedPresets] = useState<OverlayPreset[]>(() => {
+    const saved = localStorage.getItem('tikgifty_overlay_presets');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('tikgifty_overlay_presets', JSON.stringify(savedPresets));
+  }, [savedPresets]);
+
   const [layout, setLayout] = useState<OverlayLayout>({
     stats: { id: 'stats', name: 'Stream Stats', x: 5, y: 5, width: 90, visible: true },
     goals: { id: 'goals', name: 'Goals', x: 5, y: 15, width: 40, visible: true },
@@ -299,6 +329,14 @@ export default function App() {
   const [editingLayoutElement, setEditingLayoutElement] = useState<keyof OverlayLayout | null>(null);
   const [giftSoundUrl, setGiftSoundUrl] = useState<string>('');
   
+  // Volume & Mute States
+  const [isMuted, setIsMuted] = useState(false);
+  const [volumes, setVolumes] = useState({
+    tts: 0.8,
+    alerts: 0.7,
+    game: 0.5
+  });
+
   const isPro = IS_SELF_HOSTED || userProfile?.isSubscribed;
 
   const [isCheckingOut, setIsCheckingOut] = useState(false);
@@ -314,10 +352,10 @@ export default function App() {
     settings: {
       startHp: 100,
       collisionDamage: 5,
-      maxPlayers: 10,
+      maxPlayers: 12,
       likeThreshold: 100,
       followJoin: true,
-      borderType: 'neon'
+      borderType: 'spiky'
     },
     leaderboard: []
   });
@@ -482,7 +520,14 @@ export default function App() {
           'Authorization': `Bearer ${authToken}`
         },
         body: JSON.stringify(beybladeGame.leaderboard)
-      }).catch(err => console.error('Failed to save beyblade leaderboard:', err));
+      })
+      .then(async res => {
+        if (!res.ok) {
+          const text = await res.text();
+          console.error('Failed to save beyblade leaderboard:', text);
+        }
+      })
+      .catch(err => console.error('Failed to save beyblade leaderboard:', err));
     }
   }, [beybladeGame.leaderboard]);
 
@@ -698,13 +743,21 @@ export default function App() {
       setUsername(urlUsername);
     }
 
-    // Fetch settings from backend
-    fetch('/api/settings')
-      .then(res => res.json())
-      .then(data => {
-        if (data.listSettings) setListSettings(data.listSettings);
-      })
-      .catch(err => console.error('Failed to fetch settings:', err));
+    // Fetch settings from backend (only if not self-hosted or if we want public settings)
+    if (!IS_SELF_HOSTED) {
+      fetch('/api/settings')
+        .then(async res => {
+          const contentType = res.headers.get("content-type");
+          if (contentType && contentType.indexOf("application/json") !== -1) {
+            return res.json();
+          }
+          return null;
+        })
+        .then(data => {
+          if (data && data.listSettings) setListSettings(data.listSettings);
+        })
+        .catch(err => console.error('Failed to fetch settings:', err));
+    }
   }, []);
 
   const saveSettings = (newSettings: any) => {
@@ -717,39 +770,63 @@ export default function App() {
       method: 'POST',
       headers,
       body: JSON.stringify(newSettings)
-    }).catch(err => console.error('Failed to save settings:', err));
+    })
+    .then(async res => {
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('Failed to save settings:', text);
+      }
+    })
+    .catch(err => console.error('Failed to save settings:', err));
   };
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const ttsQueueRef = useRef<string[]>([]);
+  const ttsQueueRef = useRef<{text: string, voiceName?: string}[]>([]);
   const isSpeakingRef = useRef(false);
 
   // TTS Logic
-  const speak = (text: string) => {
+  const speak = (text: string, voiceName?: string) => {
     if (!isTTSEnabled || !window.speechSynthesis) return;
     
     const utterance = new SpeechSynthesisUtterance(text);
-    if (ttsVoice) utterance.voice = ttsVoice;
-    utterance.rate = 1;
-    utterance.pitch = 1;
+    
+    // We don't set the voice here anymore, we set it in processTTSQueue
+    // to ensure it uses the correct voice when it actually speaks.
     
     utterance.onend = () => {
       isSpeakingRef.current = false;
       processTTSQueue();
     };
 
-    ttsQueueRef.current.push(text);
+    ttsQueueRef.current.push({text, voiceName});
     processTTSQueue();
   };
 
   const processTTSQueue = () => {
-    if (isSpeakingRef.current || ttsQueueRef.current.length === 0) return;
+    if (isSpeakingRef.current || ttsQueueRef.current.length === 0 || isMuted) return;
     
     isSpeakingRef.current = true;
-    const nextText = ttsQueueRef.current.shift();
-    if (nextText) {
-      const utterance = new SpeechSynthesisUtterance(nextText);
-      if (ttsVoice) utterance.voice = ttsVoice;
+    const nextItem = ttsQueueRef.current.shift();
+    if (nextItem) {
+      const utterance = new SpeechSynthesisUtterance(nextItem.text);
+      
+      let selectedVoice = ttsVoice;
+      if (nextItem.voiceName) {
+        const specificVoice = window.speechSynthesis.getVoices().find(v => v.name === nextItem.voiceName);
+        if (specificVoice) selectedVoice = specificVoice;
+      }
+      
+      if (selectedVoice) utterance.voice = selectedVoice;
+      
+      utterance.volume = volumes.tts;
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      
+      utterance.onend = () => {
+        isSpeakingRef.current = false;
+        processTTSQueue();
+      };
+      
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -947,7 +1024,14 @@ export default function App() {
           'Authorization': `Bearer ${authToken}`
         },
         body: JSON.stringify(newSettings)
-      }).catch(err => console.error('Failed to save gift settings:', err));
+      })
+      .then(async res => {
+        if (!res.ok) {
+          const text = await res.text();
+          console.error('Failed to save gift settings:', text);
+        }
+      })
+      .catch(err => console.error('Failed to save gift settings:', err));
       return;
     }
 
@@ -987,7 +1071,9 @@ export default function App() {
         giftName: action.name,
         gifUrl: action.imageUrl,
         soundUrl: action.soundUrl,
-        type: action.type
+        type: action.type,
+        textColor: action.textColor,
+        fontSize: action.fontSize
       };
       setActiveAlerts(prev => [...prev, newAlert]);
 
@@ -997,8 +1083,9 @@ export default function App() {
     }
 
     // Handle sound
-    if ((action.type === 'alert' || action.type === 'sound') && action.soundUrl) {
+    if ((action.type === 'alert' || action.type === 'sound') && action.soundUrl && !isMuted) {
       const audio = new Audio(action.soundUrl);
+      audio.volume = volumes.alerts;
       audio.play().catch(e => {
         console.warn(`Audio play failed for ${action.name}:`, e.message);
       });
@@ -1008,14 +1095,15 @@ export default function App() {
     if (action.type === 'tts' || (action.ttsEnabled && action.ttsTemplate)) {
       const template = action.type === 'tts' ? (action.ttsTemplate || '{nickname} triggered an action!') : action.ttsTemplate!;
       const message = template.replace('{nickname}', nickname).replace('{giftName}', action.name);
-      speak(message);
+      speak(message, action.ttsVoice);
     }
   };
 
   const handleTikTokEvent = (data: any) => {
     // Play global gift sound if configured
-    if (data.type === 'gift' && giftSoundUrl) {
+    if (data.type === 'gift' && giftSoundUrl && !isMuted) {
       const audio = new Audio(giftSoundUrl);
+      audio.volume = volumes.alerts;
       audio.play().catch(e => console.warn('Global gift sound failed:', e.message));
     }
 
@@ -1124,7 +1212,12 @@ export default function App() {
 
     newSocket.on('tiktok-error', (err) => {
       setIsConnecting(false);
-      setError(err);
+      if (err === 'Authentication failed') {
+        setError('Oturumunuzun süresi dolmuş olabilir. Lütfen tekrar giriş yapın.');
+        setIsLoginModalOpen(true);
+      } else {
+        setError(err);
+      }
     });
 
     newSocket.on('tiktok-disconnected', () => {
@@ -1261,6 +1354,12 @@ export default function App() {
 
   const handleConnect = () => {
     if (!username) return;
+    
+    if (IS_SELF_HOSTED && !authToken) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+
     setIsConnecting(true);
     setError(null);
     
@@ -1272,7 +1371,11 @@ export default function App() {
       }
     }, 15000);
 
-    socket?.emit('connect-tiktok', username);
+    if (IS_SELF_HOSTED) {
+      socket?.emit('connect-tiktok', username, authToken);
+    } else {
+      socket?.emit('connect-tiktok', username);
+    }
     
     // Clear timeout if connected or error received
     socket?.once('tiktok-connected', () => clearTimeout(timeout));
@@ -1291,31 +1394,37 @@ export default function App() {
   }, [events]);
 
   const handleLogin = async (email?: string, password?: string) => {
-    if (IS_SELF_HOSTED && email && password) {
-      try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password })
-        });
-        
-        const contentType = res.headers.get("content-type");
-        if (!contentType || contentType.indexOf("application/json") === -1) {
-          const text = await res.text();
-          throw new Error(text || "Server returned an invalid response");
-        }
+    if (IS_SELF_HOSTED) {
+      if (email && password) {
+        try {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          
+          const contentType = res.headers.get("content-type");
+          if (!contentType || contentType.indexOf("application/json") === -1) {
+            const text = await res.text();
+            throw new Error(text || "Server returned an invalid response");
+          }
 
-        const data = await res.json();
-        if (data.token) {
-          localStorage.setItem('tikgifty_token', data.token);
-          setAuthToken(data.token);
-          setUser({ uid: data.user.id, email: data.user.email, displayName: data.user.displayName });
-          setUserProfile({ isSubscribed: data.user.isSubscribed, role: 'user' });
-        } else {
-          alert(data.error || "Login failed");
+          const data = await res.json();
+          if (data.token) {
+            localStorage.setItem('tikgifty_token', data.token);
+            setAuthToken(data.token);
+            setUser({ uid: data.user.id, email: data.user.email, displayName: data.user.displayName });
+            setUserProfile({ isSubscribed: data.user.isSubscribed, role: 'user' });
+          } else {
+            alert(data.error || "Login failed");
+          }
+        } catch (err) {
+          console.error("Login failed:", err);
+          alert("Login failed. Please check your credentials and server connection.");
         }
-      } catch (err) {
-        console.error("Login failed:", err);
+      } else {
+        // If called without credentials in self-hosted mode, open the modal
+        setIsLoginModalOpen(true);
       }
       return;
     }
@@ -1691,7 +1800,10 @@ export default function App() {
   if (isOverlayMode) {
     const theme = OVERLAY_THEMES[selectedTheme];
     return (
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      <div 
+        className={`fixed inset-0 pointer-events-none overflow-hidden ${overlayFont}`}
+        style={overlayAccent ? { '--tw-text-opacity': 1, color: overlayAccent } as any : {}}
+      >
         {/* Gift Alert Layer */}
         {layout.alerts.visible && (
           <div 
@@ -1725,10 +1837,21 @@ export default function App() {
                   
                   {alert.type === 'alert' && (
                     <div className={`text-center p-8 rounded-[32px] border shadow-2xl ${theme.alertClass}`}>
-                      <h2 className={`text-4xl font-black italic uppercase tracking-tighter mb-1 ${theme.accentColor}`}>
+                      <h2 
+                        className={`text-4xl font-black italic uppercase tracking-tighter mb-1 ${!alert.textColor ? theme.accentColor : ''}`}
+                        style={{ 
+                          color: alert.textColor || undefined,
+                          fontSize: alert.fontSize ? `${alert.fontSize}px` : undefined
+                        }}
+                      >
                         {alert.nickname}
                       </h2>
-                      <p className="text-white font-bold text-xl uppercase tracking-widest opacity-80">
+                      <p 
+                        className="text-white font-bold text-xl uppercase tracking-widest opacity-80"
+                        style={{ 
+                          fontSize: alert.fontSize ? `${parseInt(alert.fontSize) * 0.5}px` : undefined
+                        }}
+                      >
                         {alert.giftName}
                       </p>
                     </div>
@@ -1878,6 +2001,12 @@ export default function App() {
             onClick={() => setActiveTab('settings')}
             label="Settings"
           />
+          <SidebarItem 
+            icon={<Globe size={20} />} 
+            active={activeTab === 'about'} 
+            onClick={() => setActiveTab('about')}
+            label="About"
+          />
         </nav>
 
         <div className="mt-auto flex flex-col items-center gap-4 pb-4">
@@ -1918,6 +2047,18 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-4">
+          <button 
+            onClick={() => setIsMuted(!isMuted)}
+            className={`p-2.5 rounded-lg transition-all border ${
+              isMuted 
+                ? 'bg-red-500/10 border-red-500/20 text-red-500' 
+                : 'bg-white/5 border-white/5 text-gray-400 hover:text-white'
+            }`}
+            title={isMuted ? "Unmute All" : "Mute All"}
+          >
+            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+          </button>
+          <div className="h-8 w-[1px] bg-white/10" />
           <button 
             onClick={isConnected ? handleDisconnect : handleConnect}
             className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
@@ -2059,7 +2200,12 @@ export default function App() {
                     imageUrl: '',
                     soundUrl: '',
                     videoUrl: '',
-                    description: 'Custom action'
+                    description: 'Custom action',
+                    textColor: '#ec4899',
+                    fontSize: '36',
+                    ttsEnabled: true,
+                    ttsTemplate: '{nickname} triggered an action!',
+                    ttsVoice: ''
                   }])}
                   className="bg-cyan-500 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-cyan-600 transition-colors"
                 >
@@ -2382,6 +2528,154 @@ export default function App() {
                     </div>
                   </Section>
 
+                  <Section title="Customization" description="Override global fonts and colors">
+                    <div className="bg-[#111317] border border-white/5 p-6 rounded-xl space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Overlay Font</label>
+                          <select 
+                            className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors appearance-none"
+                            value={overlayFont}
+                            onChange={(e) => setOverlayFont(e.target.value)}
+                          >
+                            <option value="font-sans" className="bg-[#111317]">Sans-Serif (Default)</option>
+                            <option value="font-mono" className="bg-[#111317]">Monospace</option>
+                            <option value="font-serif" className="bg-[#111317]">Serif</option>
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Accent Color Override</label>
+                          <div className="flex gap-2">
+                            <input 
+                              type="color" 
+                              value={overlayAccent || '#06b6d4'}
+                              onChange={(e) => setOverlayAccent(e.target.value)}
+                              className="w-12 h-11 bg-white/5 border border-white/10 rounded-xl p-1 cursor-pointer"
+                            />
+                            <input 
+                              type="text" 
+                              value={overlayAccent}
+                              onChange={(e) => setOverlayAccent(e.target.value)}
+                              placeholder="Leave empty for theme default"
+                              className="flex-1 bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Section>
+
+                  <Section title="Saved Presets" description="Save and load your overlay configurations">
+                    <div className="bg-[#111317] border border-white/5 p-6 rounded-xl space-y-6">
+                      <div className="flex items-center gap-4">
+                        <button 
+                          onClick={() => {
+                            const name = prompt('Enter a name for this preset:');
+                            if (name) {
+                              setSavedPresets([...savedPresets, {
+                                id: Math.random().toString(36).substr(2, 9),
+                                name,
+                                layout,
+                                selectedTheme,
+                                font: overlayFont,
+                                accentColor: overlayAccent
+                              }]);
+                            }
+                          }}
+                          className="bg-cyan-500 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-cyan-600 transition-colors"
+                        >
+                          <Save size={16} />
+                          Save Current Configuration
+                        </button>
+                      </div>
+
+                      {savedPresets.length > 0 && (
+                        <div className="space-y-3">
+                          {savedPresets.map(preset => (
+                            <div key={preset.id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
+                              <div>
+                                <h4 className="text-sm font-bold text-white">{preset.name}</h4>
+                                <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">
+                                  Theme: {OVERLAY_THEMES[preset.selectedTheme].name} | Font: {preset.font.replace('font-', '')}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button 
+                                  onClick={() => {
+                                    setLayout(preset.layout);
+                                    setSelectedTheme(preset.selectedTheme);
+                                    setOverlayFont(preset.font);
+                                    setOverlayAccent(preset.accentColor);
+                                  }}
+                                  className="p-2 bg-white/10 rounded-lg text-white hover:bg-white/20 transition-colors"
+                                  title="Load Preset"
+                                >
+                                  <Download size={16} />
+                                </button>
+                                <button 
+                                  onClick={() => setSavedPresets(savedPresets.filter(p => p.id !== preset.id))}
+                                  className="p-2 bg-red-500/10 rounded-lg text-red-500 hover:bg-red-500 hover:text-white transition-colors"
+                                  title="Delete Preset"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </Section>
+
+                  <Section title="Stream Goals" description="Configure your follower and gift goals">
+                    <div className="bg-[#111317] border border-white/5 p-6 rounded-xl space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <h4 className="text-sm font-bold text-white">Follower Goal</h4>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Target Followers</label>
+                            <input 
+                              type="number" 
+                              value={followerGoal.target}
+                              onChange={(e) => setFollowerGoal({...followerGoal, target: parseInt(e.target.value) || 1})}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Current Followers (Manual Override)</label>
+                            <input 
+                              type="number" 
+                              value={followerGoal.current}
+                              onChange={(e) => setFollowerGoal({...followerGoal, current: parseInt(e.target.value) || 0})}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          <h4 className="text-sm font-bold text-white">Diamond Goal</h4>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Target Diamonds</label>
+                            <input 
+                              type="number" 
+                              value={giftGoal.target}
+                              onChange={(e) => setGiftGoal({...giftGoal, target: parseInt(e.target.value) || 1})}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Current Diamonds (Manual Override)</label>
+                            <input 
+                              type="number" 
+                              value={giftGoal.current}
+                              onChange={(e) => setGiftGoal({...giftGoal, current: parseInt(e.target.value) || 0})}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Section>
+
                   <Section title="OBS Integration" description="How to use this overlay in your stream">
                     <div className="bg-[#111317] border border-white/5 p-6 rounded-xl space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2406,7 +2700,45 @@ export default function App() {
                   </Section>
 
                   <Section title="Audio Settings" description="Configure global overlay sounds">
-                    <div className="bg-[#111317] border border-white/5 p-6 rounded-xl space-y-6">
+                    <div className="bg-[#111317] border border-white/5 p-6 rounded-xl space-y-8">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="space-y-3">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex justify-between">
+                            TTS Volume <span>{Math.round(volumes.tts * 100)}%</span>
+                          </label>
+                          <input 
+                            type="range" min="0" max="1" step="0.01"
+                            value={volumes.tts}
+                            onChange={(e) => setVolumes({...volumes, tts: parseFloat(e.target.value)})}
+                            className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                          />
+                        </div>
+                        <div className="space-y-3">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex justify-between">
+                            Alerts Volume <span>{Math.round(volumes.alerts * 100)}%</span>
+                          </label>
+                          <input 
+                            type="range" min="0" max="1" step="0.01"
+                            value={volumes.alerts}
+                            onChange={(e) => setVolumes({...volumes, alerts: parseFloat(e.target.value)})}
+                            className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                          />
+                        </div>
+                        <div className="space-y-3">
+                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex justify-between">
+                            Game Volume <span>{Math.round(volumes.game * 100)}%</span>
+                          </label>
+                          <input 
+                            type="range" min="0" max="1" step="0.01"
+                            value={volumes.game}
+                            onChange={(e) => setVolumes({...volumes, game: parseFloat(e.target.value)})}
+                            className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="h-[1px] bg-white/5" />
+
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Global Gift Sound</label>
                         <p className="text-[10px] text-gray-500 mb-2">Plays every time a gift is received, regardless of specific alerts.</p>
@@ -2426,6 +2758,7 @@ export default function App() {
                             onClick={() => {
                               if (giftSoundUrl) {
                                 const audio = new Audio(giftSoundUrl);
+                                audio.volume = volumes.alerts;
                                 audio.play();
                               }
                             }}
@@ -2788,7 +3121,12 @@ export default function App() {
                             imageUrl: '',
                             soundUrl: '',
                             videoUrl: '',
-                            description: 'Custom gift alert'
+                            description: 'Custom gift alert',
+                            textColor: '#ec4899',
+                            fontSize: '36',
+                            ttsEnabled: true,
+                            ttsTemplate: '{nickname} sent {giftName}!',
+                            ttsVoice: ''
                           };
                           setActions([...actions, newAction]);
                           setEditingAction(newAction);
@@ -2827,6 +3165,133 @@ export default function App() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+          {activeTab === 'about' && (
+            <div className="space-y-12 max-w-4xl mx-auto">
+              <header className="text-center space-y-4">
+                <div className="w-20 h-20 bg-cyan-500 rounded-3xl flex items-center justify-center shadow-2xl shadow-cyan-500/20 mx-auto mb-6">
+                  <Zap className="text-white fill-white" size={40} />
+                </div>
+                <h2 className="text-5xl font-black tracking-tighter text-white">About Tik Gifty</h2>
+                <p className="text-xl text-gray-400 max-w-2xl mx-auto">The ultimate interaction toolkit for TikTok streamers. Boost engagement, automate alerts, and gamify your live stream.</p>
+              </header>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="bg-[#111317] border border-white/5 p-8 rounded-[32px] space-y-4">
+                  <div className="w-12 h-12 bg-pink-500/10 rounded-2xl flex items-center justify-center text-pink-500">
+                    <Sparkles size={24} />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Real-time Interaction</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">Connect directly to your TikTok Live stream and react instantly to every gift, follow, and comment. Tik Gifty captures events as they happen, allowing you to focus on your content.</p>
+                </div>
+
+                <div className="bg-[#111317] border border-white/5 p-8 rounded-[32px] space-y-4">
+                  <div className="w-12 h-12 bg-cyan-500/10 rounded-2xl flex items-center justify-center text-cyan-500">
+                    <Gamepad2 size={24} />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Stream Gamification</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">Turn your stream into an interactive playground. From "Kelime Oyunu" to "Beyblade" battles, give your viewers a reason to stay and participate in your community.</p>
+                </div>
+
+                <div className="bg-[#111317] border border-white/5 p-8 rounded-[32px] space-y-4">
+                  <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-500">
+                    <Bell size={24} />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Custom Alerts</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">Design beautiful, high-performance overlays with custom GIFs, sounds, and text-to-speech. Make every gift feel special with personalized reactions that match your brand.</p>
+                </div>
+
+                <div className="bg-[#111317] border border-white/5 p-8 rounded-[32px] space-y-4">
+                  <div className="w-12 h-12 bg-violet-500/10 rounded-2xl flex items-center justify-center text-violet-500">
+                    <Cpu size={24} />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Self-Hosted Freedom</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">Tik Gifty is designed for flexibility. Run it on our cloud or host it yourself on your own VDS for maximum privacy and control over your data and stream assets.</p>
+                </div>
+              </div>
+
+              <Section title="How It Helps Streamers" description="Why top creators choose Tik Gifty">
+                <div className="bg-[#111317] border border-white/5 p-8 rounded-[32px] space-y-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-6 h-6 bg-cyan-500/20 rounded-full flex items-center justify-center text-cyan-500 mt-1">
+                      <Check size={14} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white">Increased Revenue</h4>
+                      <p className="text-sm text-gray-500">Interactive alerts and games encourage viewers to send more gifts and participate in the stream economy.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-4">
+                    <div className="w-6 h-6 bg-cyan-500/20 rounded-full flex items-center justify-center text-cyan-500 mt-1">
+                      <Check size={14} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white">Higher Retention</h4>
+                      <p className="text-sm text-gray-500">Gamified elements keep viewers engaged for longer periods, boosting your stream's visibility in the TikTok algorithm.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-4">
+                    <div className="w-6 h-6 bg-cyan-500/20 rounded-full flex items-center justify-center text-cyan-500 mt-1">
+                      <Check size={14} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white">Automated Moderation</h4>
+                      <p className="text-sm text-gray-500">Focus on your performance while Tik Gifty handles the technical side of alert management and viewer interactions.</p>
+                    </div>
+                  </div>
+                </div>
+              </Section>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <Section title="Support" description="Get help when you need it">
+                  <div className="bg-[#111317] border border-white/5 p-8 rounded-[32px] space-y-4">
+                    <p className="text-sm text-gray-500">Have questions or need technical assistance? Our support team and community are here to help you get the most out of Tik Gifty.</p>
+                    <div className="flex flex-col gap-3">
+                      <a href="#" className="flex items-center justify-between p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-all group">
+                        <div className="flex items-center gap-3 text-white">
+                          <MessageSquare size={18} className="text-cyan-500" />
+                          <span className="text-sm font-bold">Discord Community</span>
+                        </div>
+                        <ChevronRight size={16} className="text-gray-600 group-hover:text-white" />
+                      </a>
+                      <a href="mailto:support@tikgifty.com" className="flex items-center justify-between p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-all group">
+                        <div className="flex items-center gap-3 text-white">
+                          <Globe size={18} className="text-emerald-500" />
+                          <span className="text-sm font-bold">Email Support</span>
+                        </div>
+                        <ChevronRight size={16} className="text-gray-600 group-hover:text-white" />
+                      </a>
+                    </div>
+                  </div>
+                </Section>
+
+                <Section title="Social Media" description="Follow us for updates">
+                  <div className="bg-[#111317] border border-white/5 p-8 rounded-[32px] space-y-4">
+                    <p className="text-sm text-gray-500">Stay up to date with the latest features, tips, and community highlights by following our social channels.</p>
+                    <div className="flex flex-col gap-3">
+                      <a href="#" className="flex items-center justify-between p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-all group">
+                        <div className="flex items-center gap-3 text-white">
+                          <Twitter size={18} className="text-blue-400" />
+                          <span className="text-sm font-bold">Twitter / X</span>
+                        </div>
+                        <ChevronRight size={16} className="text-gray-600 group-hover:text-white" />
+                      </a>
+                      <a href="#" className="flex items-center justify-between p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-all group">
+                        <div className="flex items-center gap-3 text-white">
+                          <Share2 size={18} className="text-pink-500" />
+                          <span className="text-sm font-bold">TikTok Official</span>
+                        </div>
+                        <ChevronRight size={16} className="text-gray-600 group-hover:text-white" />
+                      </a>
+                    </div>
+                  </div>
+                </Section>
+              </div>
+
+              <footer className="text-center py-12 border-t border-white/5">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-600">© 2026 Tik Gifty. All rights reserved.</p>
+              </footer>
             </div>
           )}
         </div>
@@ -3083,6 +3548,36 @@ export default function App() {
                   />
                 </div>
 
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Text Color</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="color" 
+                        value={editingAction.textColor || '#ec4899'}
+                        onChange={(e) => setEditingAction({...editingAction, textColor: e.target.value})}
+                        className="w-12 h-11 bg-white/5 border border-white/10 rounded-xl p-1 cursor-pointer"
+                      />
+                      <input 
+                        type="text" 
+                        value={editingAction.textColor || ''}
+                        onChange={(e) => setEditingAction({...editingAction, textColor: e.target.value})}
+                        placeholder="#HEX"
+                        className="flex-1 bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Font Size (px)</label>
+                    <input 
+                      type="number" 
+                      value={editingAction.fontSize || '36'}
+                      onChange={(e) => setEditingAction({...editingAction, fontSize: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                    />
+                  </div>
+                </div>
+
                 <div className="p-6 bg-white/[0.02] border border-white/5 rounded-2xl space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
@@ -3094,15 +3589,32 @@ export default function App() {
                     </div>
                   </div>
                   {editingAction.ttsEnabled && (
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">TTS Template</label>
-                      <input 
-                        type="text" 
-                        value={editingAction.ttsTemplate}
-                        onChange={(e) => setEditingAction({...editingAction, ttsTemplate: e.target.value})}
-                        placeholder="{nickname} sent {giftName}!"
-                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
-                      />
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">TTS Template</label>
+                        <input 
+                          type="text" 
+                          value={editingAction.ttsTemplate}
+                          onChange={(e) => setEditingAction({...editingAction, ttsTemplate: e.target.value})}
+                          placeholder="{nickname} sent {giftName}!"
+                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Voice (Optional)</label>
+                        <select 
+                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors appearance-none"
+                          value={editingAction.ttsVoice || ''}
+                          onChange={(e) => setEditingAction({...editingAction, ttsVoice: e.target.value})}
+                        >
+                          <option value="" className="bg-[#111317]">Default Global Voice</option>
+                          {window.speechSynthesis.getVoices().map(voice => (
+                            <option key={voice.name} value={voice.name} className="bg-[#111317]">
+                              {voice.name} ({voice.lang})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3677,7 +4189,7 @@ function BeybladeArena({ game }: { game: BeybladeGame }) {
   };
 
   return (
-    <div className={`relative w-full aspect-square rounded-full border-8 overflow-hidden transition-all duration-1000 ${arenaThemes[game.arena]} ${game.settings.borderType === 'neon' ? 'shadow-[0_0_50px_rgba(6,182,212,0.2)]' : ''}`}>
+    <div className={`relative w-full aspect-square rounded-full border-8 overflow-hidden transition-all duration-1000 ${arenaThemes[game.arena]} ${game.settings.borderType === 'neon' ? 'shadow-[0_0_50px_rgba(6,182,212,0.2)] border-solid' : 'border-dashed'}`}>
       {/* Grid Lines */}
       <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
       
@@ -3715,21 +4227,31 @@ function BeybladeArena({ game }: { game: BeybladeGame }) {
 
             {/* Death Timer */}
             {p.deathTimer !== undefined && (
-              <div className="absolute -top-8 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-bounce">
+              <div className="absolute -bottom-6 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-bounce">
                 {p.deathTimer}s
               </div>
             )}
 
-            {/* HP Bar */}
-            <div className="absolute -bottom-6 w-16 h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/10">
-              <motion.div 
-                animate={{ width: `${(p.hp / p.maxHp) * 100}%` }}
-                className={`h-full ${p.hp < 30 ? 'bg-red-500' : 'bg-emerald-500'}`}
-              />
+            {/* Status Bars (HP & Shield) */}
+            <div className="absolute -top-6 w-12 flex flex-col gap-0.5 pointer-events-none">
+              <div className="w-full h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/10">
+                <motion.div 
+                  animate={{ width: `${(p.hp / p.maxHp) * 100}%` }}
+                  className={`h-full ${p.hp < 30 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                />
+              </div>
+              {p.shield > 0 && (
+                <div className="w-full h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/10">
+                  <motion.div 
+                    animate={{ width: `${Math.min(100, p.shield)}%` }}
+                    className="h-full bg-cyan-400"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Nickname */}
-            <div className="absolute -top-12 whitespace-nowrap bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg border border-white/10">
+            <div className="absolute -top-14 whitespace-nowrap bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg border border-white/10">
               <span className="text-[10px] font-black text-white uppercase tracking-tighter">{p.nickname}</span>
             </div>
 
@@ -3890,6 +4412,37 @@ function BeybladeDashboard({ game, setGame, onStart, onStop }: { game: BeybladeG
                   onChange={(e) => setGame((prev: any) => ({ ...prev, settings: { ...prev.settings, likeThreshold: parseInt(e.target.value) } }))}
                   className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest flex justify-between">
+                  Maksimum Oyuncu <span>{game.settings.maxPlayers}</span>
+                </label>
+                <input 
+                  type="range" min="2" max="50" step="1"
+                  value={game.settings.maxPlayers}
+                  onChange={(e) => setGame((prev: any) => ({ ...prev, settings: { ...prev.settings, maxPlayers: parseInt(e.target.value) } }))}
+                  className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                />
+              </div>
+              <div className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5">
+                <div>
+                  <p className="text-sm font-bold text-white">Takip ile Katılım</p>
+                  <p className="text-[10px] text-gray-500">Takip edenler otomatik katılır</p>
+                </div>
+                <div onClick={() => setGame((prev: any) => ({ ...prev, settings: { ...prev.settings, followJoin: !prev.settings.followJoin } }))}>
+                  <Toggle active={game.settings.followJoin} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Arena Kenarlığı</label>
+                <select 
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors appearance-none"
+                  value={game.settings.borderType}
+                  onChange={(e) => setGame((prev: any) => ({ ...prev, settings: { ...prev.settings, borderType: e.target.value } }))}
+                >
+                  <option value="neon" className="bg-[#111317]">Neon (Düz)</option>
+                  <option value="spiky" className="bg-[#111317]">Spiky (Dikenli)</option>
+                </select>
               </div>
             </div>
           </Section>

@@ -67,8 +67,21 @@ async function startServer() {
   }));
   app.use(compression());
   app.use(morgan('combined'));
+  const allowedOrigins = [
+    'https://tikgifty.com',
+    'https://www.tikgifty.com',
+    'http://tikgifty.com',
+    'http://www.tikgifty.com'
+  ];
+
   app.use(cors({
-    origin: process.env.NODE_ENV === 'production' ? 'https://tikgifty.com' : '*',
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true
   }));
   app.use(express.json({ limit: '10kb' })); // Limit body size
@@ -189,8 +202,9 @@ async function startServer() {
   // Socket.io for TikTok Live
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.NODE_ENV === 'production' ? 'https://tikgifty.com' : '*',
-      methods: ["GET", "POST"]
+      origin: process.env.NODE_ENV === 'production' ? allowedOrigins : '*',
+      methods: ["GET", "POST"],
+      credentials: true
     }
   });
 
@@ -225,6 +239,17 @@ async function startServer() {
         tiktokConnection.on('like', data => socket.emit('like', data));
         tiktokConnection.on('social', data => socket.emit('social', data));
         tiktokConnection.on('member', data => socket.emit('member', data));
+        tiktokConnection.on('questionNew', data => socket.emit('question', data));
+        
+        tiktokConnection.on('disconnected', () => {
+          socket.emit('tiktok-disconnected');
+          connections.delete(socket.id);
+        });
+
+        tiktokConnection.on('streamEnd', () => {
+          socket.emit('tiktok-stream-ended');
+          connections.delete(socket.id);
+        });
         
         connections.set(socket.id, tiktokConnection);
       } catch (err) {
@@ -238,6 +263,11 @@ async function startServer() {
         connections.delete(socket.id);
       }
     });
+  });
+
+  // API 404 Handler (Prevent SPA fallback from serving HTML for missing API routes)
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
   });
 
   // Vite / Static Files
