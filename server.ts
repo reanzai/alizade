@@ -42,7 +42,10 @@ const settingsSchema = new mongoose.Schema({
   listSettings: { type: Object, default: {} },
   giftSettings: { type: Object, default: {} },
   layout: { type: Object, default: {} },
+  actions: { type: Array, default: [] },
+  overlayPresets: { type: Array, default: [] },
   beybladeLeaderboard: { type: Array, default: [] },
+  pixelConquest: { type: Object, default: {} },
   updatedAt: { type: Date, default: Date.now }
 });
 
@@ -227,8 +230,23 @@ async function startServer() {
 
         const tiktokConnection = new WebcastPushConnection(username);
         
-        tiktokConnection.connect().then(state => {
-          socket.emit("tiktok-connected", { roomId: state.roomId, username });
+        tiktokConnection.connect().then(async state => {
+          let profilePic = '';
+          try {
+            if (state.roomInfo?.owner?.avatar_thumb?.url_list?.length > 0) {
+              profilePic = state.roomInfo.owner.avatar_thumb.url_list[0];
+            } else if (state.roomInfo?.owner?.avatar_url?.url_list?.length > 0) {
+              profilePic = state.roomInfo.owner.avatar_url.url_list[0];
+            }
+            
+            if (profilePic) {
+              await User.findByIdAndUpdate(decoded.id, { photoURL: profilePic, displayName: username });
+            }
+          } catch (e) {
+            console.error("Failed to extract profile pic", e);
+          }
+          
+          socket.emit("tiktok-connected", { roomId: state.roomId, username, profilePic });
         }).catch(err => {
           socket.emit("tiktok-error", err.toString());
         });

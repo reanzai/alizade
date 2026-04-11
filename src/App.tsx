@@ -55,7 +55,8 @@ import {
   Orbit,
   Ghost,
   Save,
-  Download
+  Download,
+  Map as MapIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import dayjs from 'dayjs';
@@ -82,6 +83,7 @@ import {
   handleFirestoreError,
   OperationType
 } from './firebase';
+import { PixelConquestDashboard, PixelConquestOverlay, PixelConquestState } from './components/PixelConquest';
 
 // --- Types ---
 interface TikTokAction {
@@ -297,7 +299,7 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [events, setEvents] = useState<TikTokEvent[]>([]);
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'actions' | 'events' | 'overlay' | 'leaderboard' | 'settings' | 'kelime-oyunu' | 'beyblade' | 'pricing' | 'about'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'actions' | 'events' | 'overlay' | 'leaderboard' | 'settings' | 'kelime-oyunu' | 'beyblade' | 'pixel-conquest' | 'pricing' | 'about'>('dashboard');
   const [editingAction, setEditingAction] = useState<TikTokAction | null>(null);
   const [editingTrigger, setEditingTrigger] = useState<TikTokEventTrigger | null>(null);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'general' | 'bot' | 'integrations' | 'account'>('general');
@@ -307,7 +309,7 @@ export default function App() {
   const [userStats, setUserStats] = useState<Record<string, UserStat>>({});
   const [activeAlerts, setActiveAlerts] = useState<ActiveAlert[]>([]);
   const [isOverlayMode, setIsOverlayMode] = useState(false);
-  const [gameOverlayMode, setGameOverlayMode] = useState<'game' | 'leaderboard' | 'stream' | 'beyblade' | null>(null);
+  const [gameOverlayMode, setGameOverlayMode] = useState<'game' | 'leaderboard' | 'stream' | 'beyblade' | 'pixel-conquest' | null>(null);
   const [selectedTheme, setSelectedTheme] = useState<'minimal' | 'vibrant' | 'dark'>('vibrant');
   const [overlayFont, setOverlayFont] = useState<string>('font-sans');
   const [overlayAccent, setOverlayAccent] = useState<string>('');
@@ -337,7 +339,7 @@ export default function App() {
     game: 0.5
   });
 
-  const isPro = IS_SELF_HOSTED || userProfile?.isSubscribed;
+  const isPro = userProfile?.isSubscribed || userProfile?.plan === 'pro' || userProfile?.plan === 'admin';
 
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -358,6 +360,19 @@ export default function App() {
       borderType: 'spiky'
     },
     leaderboard: []
+  });
+
+  const [pixelConquest, setPixelConquest] = useState<PixelConquestState>({
+    status: 'idle',
+    players: [],
+    grid: Array(30).fill(null).map(() => Array(40).fill({ ownerId: null, color: null })),
+    reignPlayerId: null,
+    settings: {
+      gridWidth: 40,
+      gridHeight: 30,
+      shieldMax: 100,
+      reignMode: true
+    }
   });
 
   // Word Game State
@@ -412,6 +427,96 @@ export default function App() {
       };
 
       return { ...prev, players: [...prev.players, newPlayer] };
+    });
+  };
+
+  const handlePixelConquestAction = (data: any) => {
+    if (pixelConquest.status !== 'playing') return;
+
+    setPixelConquest(prev => {
+      const { gridWidth, gridHeight, shieldMax } = prev.settings;
+      let players = [...prev.players];
+      let grid = prev.grid.map(row => [...row]);
+      
+      let player = players.find(p => p.id === data.uniqueId);
+      if (!player) {
+        const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+        player = {
+          id: data.uniqueId,
+          nickname: data.nickname,
+          avatar: data.profilePictureUrl,
+          color: colors[players.length % colors.length],
+          score: 0,
+          shield: 0
+        };
+        players.push(player);
+      }
+
+      // Calculate impact based on gift value (diamonds)
+      const impact = data.diamondCount || 1;
+      const radius = Math.max(1, Math.floor(Math.sqrt(impact)));
+      
+      // Pick a random starting point if player has no pixels, else pick a point near their existing pixels
+      let startX = Math.floor(Math.random() * gridWidth);
+      let startY = Math.floor(Math.random() * gridHeight);
+      
+      const playerPixels: {x: number, y: number}[] = [];
+      for (let y = 0; y < gridHeight; y++) {
+        for (let x = 0; x < gridWidth; x++) {
+          if (grid[y][x].ownerId === player.id) {
+            playerPixels.push({x, y});
+          }
+        }
+      }
+
+      if (playerPixels.length > 0) {
+        const randomPixel = playerPixels[Math.floor(Math.random() * playerPixels.length)];
+        startX = randomPixel.x;
+        startY = randomPixel.y;
+      }
+
+      let conquered = 0;
+      for (let y = Math.max(0, startY - radius); y <= Math.min(gridHeight - 1, startY + radius); y++) {
+        for (let x = Math.max(0, startX - radius); x <= Math.min(gridWidth - 1, startX + radius); x++) {
+          // Distance check for circular impact
+          if (Math.pow(x - startX, 2) + Math.pow(y - startY, 2) <= Math.pow(radius, 2)) {
+            const cell = grid[y][x];
+            if (cell.ownerId !== player.id) {
+              // If cell is owned by reign player and they have shield, reduce shield instead of conquering
+              if (cell.ownerId === prev.reignPlayerId) {
+                const reignPlayer = players.find(p => p.id === prev.reignPlayerId);
+                if (reignPlayer && reignPlayer.shield > 0) {
+                  reignPlayer.shield--;
+                  continue;
+                }
+              }
+              
+              // If cell was owned by someone else, reduce their score
+              if (cell.ownerId) {
+                const oldOwner = players.find(p => p.id === cell.ownerId);
+                if (oldOwner) oldOwner.score--;
+              }
+              
+              grid[y][x] = { ownerId: player.id, color: player.color };
+              conquered++;
+            }
+          }
+        }
+      }
+
+      player.score += conquered;
+
+      // Update Reign Player
+      let newReignPlayerId = prev.reignPlayerId;
+      if (prev.settings.reignMode) {
+        const topPlayer = [...players].sort((a, b) => b.score - a.score)[0];
+        if (topPlayer && topPlayer.score > 0 && topPlayer.id !== newReignPlayerId) {
+          newReignPlayerId = topPlayer.id;
+          topPlayer.shield = shieldMax; // Give shield to new reign player
+        }
+      }
+
+      return { ...prev, players, grid, reignPlayerId: newReignPlayerId };
     });
   };
 
@@ -735,7 +840,7 @@ export default function App() {
     const mode = params.get('mode');
     const urlUsername = params.get('username');
 
-    if (mode === 'game' || mode === 'leaderboard' || mode === 'stream') {
+    if (mode === 'game' || mode === 'leaderboard' || mode === 'stream' || mode === 'beyblade' || mode === 'pixel-conquest') {
       setGameOverlayMode(mode as any);
     }
 
@@ -766,10 +871,17 @@ export default function App() {
       headers['Authorization'] = `Bearer ${authToken}`;
     }
 
+    const payload = {
+      ...newSettings,
+      actions,
+      overlayPresets: savedPresets,
+      pixelConquest
+    };
+
     fetch('/api/settings', {
       method: 'POST',
       headers,
-      body: JSON.stringify(newSettings)
+      body: JSON.stringify(payload)
     })
     .then(async res => {
       if (!res.ok) {
@@ -935,37 +1047,35 @@ export default function App() {
   useEffect(() => {
     if (IS_SELF_HOSTED) {
       if (authToken) {
-        // Mock user from token or fetch profile
-        fetch('/api/settings', {
-          headers: { 'Authorization': `Bearer ${authToken}` }
-        })
-        .then(async res => {
-          if (res.status === 401 || res.status === 403) {
+        Promise.all([
+          fetch('/api/user/me', { headers: { 'Authorization': `Bearer ${authToken}` } }).then(res => res.ok ? res.json() : null),
+          fetch('/api/settings', { headers: { 'Authorization': `Bearer ${authToken}` } }).then(res => res.ok ? res.json() : null)
+        ])
+        .then(([userData, settingsData]) => {
+          if (!userData) {
             setAuthToken(null);
             localStorage.removeItem('tikgifty_token');
-            return null;
+            setIsAuthLoading(false);
+            return;
           }
           
-          const contentType = res.headers.get("content-type");
-          if (contentType && contentType.indexOf("application/json") !== -1) {
-            return res.json();
-          } else {
-            const text = await res.text();
-            console.error("Non-JSON response from server:", text);
-            return null;
-          }
-        })
-        .then(data => {
-          if (data) {
-            setUser({ uid: data.userId, email: 'user@tikgifty.com', displayName: 'Creator' });
-            setUserProfile({ isSubscribed: true, role: 'user' });
-            if (data.listSettings) setListSettings(data.listSettings);
-            if (data.giftSettings) setGiftSettings(data.giftSettings);
-            if (data.beybladeLeaderboard) setBeybladeGame(prev => ({ ...prev, leaderboard: data.beybladeLeaderboard }));
+          setUser({ uid: userData._id, email: userData.email, displayName: userData.displayName, photoURL: userData.photoURL });
+          setUserProfile({ isSubscribed: userData.isSubscribed, plan: userData.plan, role: userData.role });
+          
+          if (settingsData) {
+            if (settingsData.listSettings && Object.keys(settingsData.listSettings).length > 0) setListSettings(settingsData.listSettings);
+            if (settingsData.giftSettings && Object.keys(settingsData.giftSettings).length > 0) setGiftSettings(settingsData.giftSettings);
+            if (settingsData.beybladeLeaderboard) setBeybladeGame(prev => ({ ...prev, leaderboard: settingsData.beybladeLeaderboard }));
+            if (settingsData.actions && settingsData.actions.length > 0) setActions(settingsData.actions);
+            if (settingsData.overlayPresets && settingsData.overlayPresets.length > 0) setSavedPresets(settingsData.overlayPresets);
+            if (settingsData.pixelConquest && Object.keys(settingsData.pixelConquest).length > 0) setPixelConquest(settingsData.pixelConquest);
           }
           setIsAuthLoading(false);
         })
-        .catch(() => setIsAuthLoading(false));
+        .catch(err => {
+          console.error("Failed to load user data", err);
+          setIsAuthLoading(false);
+        });
       } else {
         setIsAuthLoading(false);
       }
@@ -1052,7 +1162,7 @@ export default function App() {
     const mode = params.get('mode');
     if (mode === 'overlay') {
       setIsOverlayMode(true);
-    } else if (mode === 'game' || mode === 'leaderboard' || mode === 'stream' || mode === 'beyblade') {
+    } else if (mode === 'game' || mode === 'leaderboard' || mode === 'stream' || mode === 'beyblade' || mode === 'pixel-conquest') {
       setGameOverlayMode(mode as any);
     }
   }, []);
@@ -1105,6 +1215,10 @@ export default function App() {
       const audio = new Audio(giftSoundUrl);
       audio.volume = volumes.alerts;
       audio.play().catch(e => console.warn('Global gift sound failed:', e.message));
+    }
+
+    if (data.type === 'gift') {
+      handlePixelConquestAction(data);
     }
 
     // Update streaks for gifts
@@ -1208,6 +1322,9 @@ export default function App() {
       setIsConnecting(false);
       setError(null);
       console.log('Connected to TikTok:', data);
+      if (data.profilePic) {
+        setUser((prev: any) => prev ? { ...prev, photoURL: data.profilePic } : prev);
+      }
     });
 
     newSocket.on('tiktok-error', (err) => {
@@ -1487,6 +1604,12 @@ export default function App() {
 
   const handleSubscribe = async () => {
     if (!user) return;
+    
+    if (IS_SELF_HOSTED) {
+      alert("In self-hosted mode, subscriptions must be managed by the administrator.");
+      return;
+    }
+
     try {
       const userDocRef = doc(db, 'users', user.uid);
       await updateDoc(userDocRef, { isSubscribed: true });
@@ -1773,6 +1896,10 @@ export default function App() {
   }
 
   if (gameOverlayMode) {
+    if (gameOverlayMode === 'pixel-conquest') {
+      return <PixelConquestOverlay state={pixelConquest} events={events} />;
+    }
+
     return (
       <div className="fixed inset-0 pointer-events-none overflow-hidden flex flex-col items-center justify-center p-12">
         <div className="w-full max-w-4xl flex flex-col items-center gap-12">
@@ -1989,6 +2116,12 @@ export default function App() {
             label="Beyblade"
           />
           <SidebarItem 
+            icon={<MapIcon size={20} />} 
+            active={activeTab === 'pixel-conquest'} 
+            onClick={() => setActiveTab('pixel-conquest')}
+            label="Piksel Fetih"
+          />
+          <SidebarItem 
             icon={<CreditCard size={20} />} 
             active={activeTab === 'pricing'} 
             onClick={() => setActiveTab('pricing')}
@@ -2011,7 +2144,7 @@ export default function App() {
 
         <div className="mt-auto flex flex-col items-center gap-4 pb-4">
           <div className="group relative">
-            <img src={user?.photoURL} className="w-8 h-8 rounded-lg border border-white/10 cursor-pointer" />
+            <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'User'}&background=random`} className="w-8 h-8 rounded-lg border border-white/10 cursor-pointer" />
           </div>
           <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-red-500'}`} />
         </div>
@@ -2075,10 +2208,10 @@ export default function App() {
             <div className="text-right">
               <p className="text-xs font-bold text-white leading-none">{user?.displayName}</p>
               <p className="text-[10px] text-gray-500 font-medium uppercase tracking-tighter mt-1">
-                {IS_SELF_HOSTED ? 'Self-Hosted Mode' : (isPro ? 'Pro Creator' : 'Free Plan')}
+                {isPro ? 'Pro Creator' : 'Free Plan'} {IS_SELF_HOSTED && '(Self-Hosted)'}
               </p>
             </div>
-            <img src={user?.photoURL} className="w-8 h-8 rounded-lg border border-white/10" />
+            <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'User'}&background=random`} className="w-8 h-8 rounded-lg border border-white/10" />
           </div>
         </div>
       </header>
@@ -2928,6 +3061,15 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'pixel-conquest' && (
+            <PixelConquestDashboard 
+              state={pixelConquest} 
+              setState={setPixelConquest}
+              onStart={() => setPixelConquest(prev => ({ ...prev, status: 'playing', players: [], grid: Array(prev.settings.gridHeight).fill(null).map(() => Array(prev.settings.gridWidth).fill({ ownerId: null, color: null })), reignPlayerId: null }))}
+              onStop={() => setPixelConquest(prev => ({ ...prev, status: 'idle' }))}
+            />
+          )}
+
           {activeTab === 'pricing' && (
             <PricingPage 
               isSubscribed={isPro} 
@@ -3142,7 +3284,7 @@ export default function App() {
                   <Section title="Account" description="Your subscription and profile">
                     <div className="bg-[#111317] border border-white/5 rounded-xl p-6 flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <img src={user?.photoURL} className="w-12 h-12 rounded-xl border border-white/10" />
+                        <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'User'}&background=random`} className="w-12 h-12 rounded-xl border border-white/10" />
                         <div>
                           <p className="text-sm font-bold text-white">{user?.displayName}</p>
                           <p className="text-xs text-gray-500">{user?.email}</p>
