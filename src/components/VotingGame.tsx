@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Upload, Play, Square, Settings, Trophy, Music, Image as ImageIcon, Users } from 'lucide-react';
+import { Plus, Trash2, Upload, Play, Square, Settings, Trophy, Music, Image as ImageIcon, Users, Copy } from 'lucide-react';
 
 export interface VotingTeam {
   id: string;
@@ -26,9 +26,10 @@ export interface VotingGameState {
 interface VotingGameDashboardProps {
   gameState: VotingGameState;
   setGameState: React.Dispatch<React.SetStateAction<VotingGameState>>;
+  username?: string;
 }
 
-export const VotingGameDashboard: React.FC<VotingGameDashboardProps> = ({ gameState, setGameState }) => {
+export const VotingGameDashboard: React.FC<VotingGameDashboardProps> = ({ gameState, setGameState, username }) => {
   const [activeTab, setActiveTab] = useState<'teams' | 'settings'>('teams');
 
   const addTeam = () => {
@@ -128,6 +129,17 @@ export const VotingGameDashboard: React.FC<VotingGameDashboardProps> = ({ gameSt
           <p className="text-sm text-gray-400">İzleyicilerin takımlara katılıp hediye/yorum ile oy verdiği interaktif oyun.</p>
         </div>
         <div className="flex gap-3">
+          <button 
+            onClick={() => {
+              const url = `${window.location.origin}${window.location.pathname}?mode=voting${username ? `&username=${username}` : ''}`;
+              navigator.clipboard.writeText(url);
+              alert('Oylama Oyunu URL kopyalandı!');
+            }}
+            className="bg-white/5 border border-white/10 text-white px-4 md:px-6 py-2 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2"
+          >
+            <Copy size={16} />
+            OBS URL Kopyala
+          </button>
           {gameState.status === 'idle' ? (
             <button
               onClick={() => setGameState(prev => ({ ...prev, status: 'running', userTeams: {}, teams: prev.teams.map(t => ({ ...t, votes: 0 })) }))}

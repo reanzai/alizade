@@ -16,6 +16,7 @@ import rateLimit from "express-rate-limit";
 import compression from "compression";
 import morgan from "morgan";
 import multer from "multer";
+import mongoSanitize from "express-mongo-sanitize";
 
 dotenv.config();
 
@@ -88,8 +89,9 @@ async function startServer() {
   
   // Security & Performance Middleware
   app.use(helmet({
-    contentSecurityPolicy: false, // Disable for Vite dev compatibility
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false, // Disable for Vite dev compatibility, enable in production
   }));
+  app.use(mongoSanitize()); // Prevent NoSQL injection
   app.use(compression());
   app.use(morgan('combined'));
   const allowedOrigins = [
@@ -247,9 +249,20 @@ async function startServer() {
 
   app.post("/api/settings", authenticateToken, async (req: any, res) => {
     try {
+      const { listSettings, giftSettings, layout, actions, overlayPresets, beybladeLeaderboard, pixelConquest } = req.body;
+      const updateData: any = { updatedAt: new Date() };
+      
+      if (listSettings !== undefined) updateData.listSettings = listSettings;
+      if (giftSettings !== undefined) updateData.giftSettings = giftSettings;
+      if (layout !== undefined) updateData.layout = layout;
+      if (actions !== undefined) updateData.actions = actions;
+      if (overlayPresets !== undefined) updateData.overlayPresets = overlayPresets;
+      if (beybladeLeaderboard !== undefined) updateData.beybladeLeaderboard = beybladeLeaderboard;
+      if (pixelConquest !== undefined) updateData.pixelConquest = pixelConquest;
+
       const settings = await Settings.findOneAndUpdate(
         { userId: req.user.id },
-        { ...req.body, updatedAt: new Date() },
+        { $set: updateData },
         { upsert: true, new: true }
       );
       res.json({ status: "ok", settings });
@@ -276,6 +289,18 @@ async function startServer() {
   });
 
   io.on("connection", (socket) => {
+    socket.on("join-room", (username: string) => {
+      socket.join(`room_${username}`);
+    });
+
+    socket.on("sync-state", (data: { username: string, state: any }) => {
+      socket.to(`room_${data.username}`).emit("state-sync", data.state);
+    });
+
+    socket.on("request-state", (username: string) => {
+      socket.to(`room_${username}`).emit("request-state");
+    });
+
     socket.on("connect-tiktok", async (username: string, token: string) => {
       try {
         // Verify user plan for restrictions
@@ -310,32 +335,41 @@ async function startServer() {
             console.error("Failed to extract profile pic", e);
           }
           
-          socket.emit("tiktok-connected", { roomId: state.roomId, username, profilePic });
+          socket.join(`room_${username}`);
+          io.to(`room_${username}`).emit("tiktok-connected", { roomId: state.roomId, username, profilePic });
         }).catch(err => {
           socket.emit("tiktok-error", err.toString());
         });
 
         // Forward events
-        tiktokConnection.on('chat', data => socket.emit('chat', data));
-        tiktokConnection.on('gift', data => socket.emit('gift', data));
-        tiktokConnection.on('like', data => socket.emit('like', data));
-        tiktokConnection.on('social', data => socket.emit('social', data));
-        tiktokConnection.on('member', data => socket.emit('member', data));
-        tiktokConnection.on('questionNew', data => socket.emit('question', data));
+        tiktokConnection.on('chat', data => io.to(`room_${username}`).emit('chat', data));
+        tiktokConnection.on('gift', data => io.to(`room_${username}`).emit('gift', data));
+        tiktokConnection.on('like', data => io.to(`room_${username}`).emit('like', data));
+        tiktokConnection.on('social', data => io.to(`room_${username}`).emit('social', data));
+        tiktokConnection.on('member', data => io.to(`room_${username}`).emit('member', data));
+        tiktokConnection.on('questionNew', data => io.to(`room_${username}`).emit('question', data));
         
         tiktokConnection.on('disconnected', () => {
-          socket.emit('tiktok-disconnected');
+          io.to(`room_${username}`).emit('tiktok-disconnected');
           connections.delete(socket.id);
         });
 
         tiktokConnection.on('streamEnd', () => {
-          socket.emit('tiktok-stream-ended');
+          io.to(`room_${username}`).emit('tiktok-stream-ended');
           connections.delete(socket.id);
         });
         
         connections.set(socket.id, tiktokConnection);
       } catch (err) {
         socket.emit("tiktok-error", "Authentication failed");
+      }
+    });
+
+    socket.on("disconnect-tiktok", () => {
+      if (connections.has(socket.id)) {
+        connections.get(socket.id)?.disconnect();
+        connections.delete(socket.id);
+        socket.emit("tiktok-disconnected");
       }
     });
 

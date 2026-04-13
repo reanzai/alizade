@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Play, Square, Users, Shield, Map as MapIcon, RefreshCw, X, Crown, Zap } from 'lucide-react';
+import { Settings, Play, Square, Users, Shield, Map as MapIcon, RefreshCw, X, Crown, Zap, Copy } from 'lucide-react';
 
 // ... (keep existing interfaces)
 export interface PixelPlayer {
@@ -53,7 +53,7 @@ function isPointInPolygon(point: number[], vs: number[][]) {
 
 import { useTranslation } from 'react-i18next';
 
-export function PixelConquestDashboard({ state, setState, onStart, onStop }: { state: PixelConquestState, setState: any, onStart: () => void, onStop: () => void }) {
+export function PixelConquestDashboard({ state, setState, onStart, onStop, username }: { state: PixelConquestState, setState: any, onStart: () => void, onStop: () => void, username?: string }) {
   const { t } = useTranslation();
   
   const handleKick = (id: string) => {
@@ -93,6 +93,17 @@ export function PixelConquestDashboard({ state, setState, onStart, onStop }: { s
           <p className="text-sm text-gray-500">{t('pixelConquest.desc')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-4">
+          <button 
+            onClick={() => {
+              const url = `${window.location.origin}${window.location.pathname}?mode=pixel-conquest${username ? `&username=${username}` : ''}`;
+              navigator.clipboard.writeText(url);
+              alert('Pixel Conquest URL kopyalandı!');
+            }}
+            className="bg-white/5 border border-white/10 text-white px-4 md:px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2"
+          >
+            <Copy size={16} />
+            OBS URL
+          </button>
           <button
             onClick={() => window.open('/?mode=pixel-conquest', '_blank', 'width=1280,height=720')}
             className="px-6 py-3 bg-white/5 hover:bg-white/10 text-white rounded-xl font-bold text-sm transition-colors border border-white/10"
@@ -132,7 +143,7 @@ export function PixelConquestDashboard({ state, setState, onStart, onStop }: { s
                   <div key={player.id} className="flex items-center justify-between bg-black/40 border border-white/5 rounded-xl p-4">
                     <div className="flex items-center gap-4">
                       <div className="relative">
-                        <img src={player.avatar} className="w-10 h-10 rounded-lg border-2" style={{ borderColor: player.color }} />
+                        <img src={player.avatar} alt={player.nickname} className="w-10 h-10 rounded-lg border-2" style={{ borderColor: player.color }} />
                         {state.reignPlayerId === player.id && (
                           <div className="absolute -top-2 -right-2 w-5 h-5 bg-yellow-500 rounded-full flex items-center justify-center shadow-lg shadow-yellow-500/50">
                             <Shield size={10} className="text-black fill-black" />
@@ -467,7 +478,7 @@ export function PixelConquestOverlay({ state, events }: { state: PixelConquestSt
                 <div className="w-8 flex justify-center">
                   {rankIcon}
                 </div>
-                <img src={player.avatar} className="w-10 h-10 rounded-full border-2 border-white/20" />
+                <img src={player.avatar} alt={player.nickname} className="w-10 h-10 rounded-full border-2 border-white/20" />
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-bold truncate ${textClass}`}>{player.nickname}</p>
                 </div>

@@ -308,7 +308,7 @@ export default function App() {
   const [events, setEvents] = useState<TikTokEvent[]>([]);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'actions' | 'events' | 'overlay' | 'leaderboard' | 'settings' | 'kelime-oyunu' | 'beyblade' | 'pixel-conquest' | 'voting' | 'pricing' | 'about'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'actions' | 'events' | 'overlay' | 'leaderboard' | 'settings' | 'games' | 'kelime-oyunu' | 'beyblade' | 'pixel-conquest' | 'voting' | 'pricing' | 'about'>('dashboard');
   const [editingAction, setEditingAction] = useState<TikTokAction | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -456,14 +456,45 @@ export default function App() {
   const lastGift = useRef<string | null>(null);
   const gameRef = useRef(game);
   const beybladeGameRef = useRef(beybladeGame);
+  const votingGameRef = useRef(votingGame);
+  const pixelConquestRef = useRef(pixelConquest);
+  const usernameRef = useRef(username);
+
+  useEffect(() => {
+    usernameRef.current = username;
+  }, [username]);
 
   useEffect(() => {
     gameRef.current = game;
-  }, [game]);
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('mode') && username && socket) {
+      socket.emit('sync-state', { username, state: { type: 'wordGame', data: game } });
+    }
+  }, [game, username, socket]);
 
   useEffect(() => {
     beybladeGameRef.current = beybladeGame;
-  }, [beybladeGame]);
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('mode') && username && socket) {
+      socket.emit('sync-state', { username, state: { type: 'beybladeGame', data: beybladeGame } });
+    }
+  }, [beybladeGame, username, socket]);
+
+  useEffect(() => {
+    votingGameRef.current = votingGame;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('mode') && username && socket) {
+      socket.emit('sync-state', { username, state: { type: 'votingGame', data: votingGame } });
+    }
+  }, [votingGame, username, socket]);
+
+  useEffect(() => {
+    pixelConquestRef.current = pixelConquest;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('mode') && username && socket) {
+      socket.emit('sync-state', { username, state: { type: 'pixelConquest', data: pixelConquest } });
+    }
+  }, [pixelConquest, username, socket]);
 
   const addBeybladePlayer = (data: any) => {
     setBeybladeGame(prev => {
@@ -926,7 +957,7 @@ export default function App() {
     const mode = params.get('mode');
     const urlUsername = params.get('username');
 
-    if (mode === 'game' || mode === 'leaderboard' || mode === 'stream' || mode === 'beyblade' || mode === 'pixel-conquest') {
+    if (mode === 'game' || mode === 'leaderboard' || mode === 'stream' || mode === 'beyblade' || mode === 'pixel-conquest' || mode === 'voting') {
       setGameOverlayMode(mode as any);
     }
 
@@ -1244,7 +1275,7 @@ export default function App() {
     const mode = params.get('mode');
     if (mode === 'overlay') {
       setIsOverlayMode(true);
-    } else if (mode === 'game' || mode === 'leaderboard' || mode === 'stream' || mode === 'beyblade' || mode === 'pixel-conquest') {
+    } else if (mode === 'game' || mode === 'leaderboard' || mode === 'stream' || mode === 'beyblade' || mode === 'pixel-conquest' || mode === 'voting') {
       setGameOverlayMode(mode as any);
     }
   }, []);
@@ -1388,6 +1419,12 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (socket && username) {
+      socket.emit('join-room', username);
+    }
+  }, [socket, username]);
+
+  useEffect(() => {
     const newSocket = io({
       transports: ['polling', 'websocket'],
       reconnectionAttempts: 5,
@@ -1397,6 +1434,32 @@ export default function App() {
 
     newSocket.on('connect', () => {
       console.log('Connected to server');
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('mode');
+      const urlUsername = params.get('username');
+      if (mode && urlUsername) {
+        newSocket.emit('join-room', urlUsername);
+        newSocket.emit('request-state', urlUsername);
+      }
+    });
+
+    newSocket.on('request-state', () => {
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('mode');
+      const currentUsername = usernameRef.current;
+      if (!mode && currentUsername) {
+        newSocket.emit('sync-state', { username: currentUsername, state: { type: 'votingGame', data: votingGameRef.current } });
+        newSocket.emit('sync-state', { username: currentUsername, state: { type: 'wordGame', data: gameRef.current } });
+        newSocket.emit('sync-state', { username: currentUsername, state: { type: 'beybladeGame', data: beybladeGameRef.current } });
+        newSocket.emit('sync-state', { username: currentUsername, state: { type: 'pixelConquest', data: pixelConquestRef.current } });
+      }
+    });
+
+    newSocket.on('state-sync', (stateObj: any) => {
+      if (stateObj.type === 'votingGame') setVotingGame(stateObj.data);
+      if (stateObj.type === 'wordGame') setGame(stateObj.data);
+      if (stateObj.type === 'beybladeGame') setBeybladeGame(stateObj.data);
+      if (stateObj.type === 'pixelConquest') setPixelConquest(stateObj.data);
     });
 
     newSocket.on('tiktok-connected', (data) => {
@@ -1603,10 +1666,13 @@ export default function App() {
     
     // Set a timeout for the connection attempt
     const timeout = setTimeout(() => {
-      if (isConnecting && !isConnected) {
-        setIsConnecting(false);
-        setError('Connection timed out. The server might be busy or TikTok is not responding.');
-      }
+      setIsConnecting(prev => {
+        if (prev) {
+          setError('Connection timed out. The server might be busy or TikTok is not responding.');
+          return false;
+        }
+        return prev;
+      });
     }, 15000);
 
     if (IS_SELF_HOSTED) {
@@ -2247,27 +2313,9 @@ export default function App() {
             />
             <SidebarItem 
               icon={<Gamepad2 size={20} />} 
-              active={activeTab === 'kelime-oyunu'} 
-              onClick={() => { setActiveTab('kelime-oyunu'); setIsMobileMenuOpen(false); }}
-              label={t('nav.wordGame')}
-            />
-            <SidebarItem 
-              icon={<Disc size={20} />} 
-              active={activeTab === 'beyblade'} 
-              onClick={() => { setActiveTab('beyblade'); setIsMobileMenuOpen(false); }}
-              label={t('nav.beyblade')}
-            />
-            <SidebarItem 
-              icon={<MapIcon size={20} />} 
-              active={activeTab === 'pixel-conquest'} 
-              onClick={() => { setActiveTab('pixel-conquest'); setIsMobileMenuOpen(false); }}
-              label={t('nav.pixelConquest')}
-            />
-            <SidebarItem 
-              icon={<Users size={20} />} 
-              active={activeTab === 'voting'} 
-              onClick={() => { setActiveTab('voting'); setIsMobileMenuOpen(false); }}
-              label="Oylama Oyunu"
+              active={activeTab === 'games' || activeTab === 'kelime-oyunu' || activeTab === 'beyblade' || activeTab === 'pixel-conquest' || activeTab === 'voting'} 
+              onClick={() => { setActiveTab('games'); setIsMobileMenuOpen(false); }}
+              label="Oyunlar"
             />
             <SidebarItem 
               icon={<CreditCard size={20} />} 
@@ -3209,6 +3257,69 @@ export default function App() {
             </div>
           )}
 
+          {activeTab === 'games' && (
+            <div className="space-y-8">
+              <header>
+                <h2 className="text-3xl font-black tracking-tighter text-white">Oyunlar</h2>
+                <p className="text-sm text-gray-500">Canlı yayın etkileşimli oyunlarınızı yönetin</p>
+              </header>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {/* Kelime Oyunu Card */}
+                <div 
+                  onClick={() => setActiveTab('kelime-oyunu')}
+                  className="bg-[#111317] border border-white/10 rounded-3xl p-6 cursor-pointer hover:border-cyan-500/50 hover:bg-white/5 transition-all group relative overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="w-12 h-12 bg-cyan-500/20 rounded-2xl flex items-center justify-center mb-4">
+                    <Gamepad2 size={24} className="text-cyan-500" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Kelime Oyunu</h3>
+                  <p className="text-sm text-gray-400">İzleyicilerin harf harf kelime tahmin ettiği interaktif oyun.</p>
+                </div>
+
+                {/* Beyblade Card */}
+                <div 
+                  onClick={() => setActiveTab('beyblade')}
+                  className="bg-[#111317] border border-white/10 rounded-3xl p-6 cursor-pointer hover:border-pink-500/50 hover:bg-white/5 transition-all group relative overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-pink-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="w-12 h-12 bg-pink-500/20 rounded-2xl flex items-center justify-center mb-4">
+                    <Disc size={24} className="text-pink-500" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Beyblade</h3>
+                  <p className="text-sm text-gray-400">İzleyicilerin hediye atarak katıldığı beyblade savaşı.</p>
+                </div>
+
+                {/* Pixel Conquest Card */}
+                <div 
+                  onClick={() => setActiveTab('pixel-conquest')}
+                  className="bg-[#111317] border border-white/10 rounded-3xl p-6 cursor-pointer hover:border-emerald-500/50 hover:bg-white/5 transition-all group relative overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="w-12 h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-4">
+                    <MapIcon size={24} className="text-emerald-500" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Pixel Conquest</h3>
+                  <p className="text-sm text-gray-400">İzleyicilerin haritayı boyayarak ele geçirdiği strateji oyunu.</p>
+                </div>
+
+                {/* Voting Game Card */}
+                <div 
+                  onClick={() => setActiveTab('voting')}
+                  className="bg-[#111317] border border-white/10 rounded-3xl p-6 cursor-pointer hover:border-blue-500/50 hover:bg-white/5 transition-all group relative overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center mb-4">
+                    <Users size={24} className="text-blue-500" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-2">Oylama Oyunu v1</h3>
+                  <p className="text-sm text-gray-400">İzleyicilerin takımlara katılıp oy verdiği interaktif oylama.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'kelime-oyunu' && (
             <div className="space-y-8">
               <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -3308,6 +3419,7 @@ export default function App() {
               setGame={setBeybladeGame}
               onStart={() => setBeybladeGame(prev => ({ ...prev, status: 'playing', players: [] }))}
               onStop={() => setBeybladeGame(prev => ({ ...prev, status: 'idle' }))}
+              username={username}
             />
           )}
 
@@ -3317,6 +3429,7 @@ export default function App() {
               setState={setPixelConquest}
               onStart={() => setPixelConquest(prev => ({ ...prev, status: 'playing', players: [], grid: Array(prev.settings.gridHeight).fill(null).map(() => Array(prev.settings.gridWidth).fill({ ownerId: null, color: null })), reignPlayerId: null }))}
               onStop={() => setPixelConquest(prev => ({ ...prev, status: 'idle' }))}
+              username={username}
             />
           )}
 
@@ -3324,6 +3437,7 @@ export default function App() {
             <VotingGameDashboard 
               gameState={votingGame}
               setGameState={setVotingGame}
+              username={username}
             />
           )}
 
@@ -3551,7 +3665,7 @@ export default function App() {
                   <Section title="Account" description="Your subscription and profile">
                     <div className="bg-[#111317] border border-white/5 rounded-xl p-6 flex items-center justify-between">
                       <div className="flex items-center gap-4">
-                        <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'User'}&background=random`} className="w-12 h-12 rounded-xl border border-white/10" />
+                        <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'User'}&background=random`} alt={user?.displayName || 'User'} className="w-12 h-12 rounded-xl border border-white/10" />
                         <div>
                           <p className="text-sm font-bold text-white">{user?.displayName}</p>
                           <p className="text-xs text-gray-500">{user?.email}</p>
@@ -4515,7 +4629,7 @@ function WordGameLeaderboard({ scores, combo, players }: { scores: Record<string
               }`}>
                 {index + 1}
               </span>
-              <img src={players[uid]?.profilePictureUrl} className="w-6 h-6 rounded-full border border-white/10" referrerPolicy="no-referrer" />
+              <img src={players[uid]?.profilePictureUrl} alt={players[uid]?.nickname} className="w-6 h-6 rounded-full border border-white/10" referrerPolicy="no-referrer" />
               <span className="text-sm font-bold text-white truncate max-w-[100px]">{players[uid]?.nickname || uid}</span>
               {combo[uid] > 1 && (
                 <span className="px-2 py-0.5 bg-orange-500 text-black text-[8px] font-black rounded-full animate-bounce">
@@ -4712,7 +4826,7 @@ function BeybladeArena({ game }: { game: BeybladeGame }) {
             </div>
 
             {/* Profile Pic */}
-            <img src={p.profilePictureUrl} className="absolute w-6 h-6 rounded-full border border-white/20 z-10" referrerPolicy="no-referrer" />
+            <img src={p.profilePictureUrl} alt={p.nickname} className="absolute w-6 h-6 rounded-full border border-white/20 z-10" referrerPolicy="no-referrer" />
           </div>
         </motion.div>
       ))}
@@ -4727,7 +4841,7 @@ function BeybladeArena({ game }: { game: BeybladeGame }) {
   );
 }
 
-function BeybladeDashboard({ game, setGame, onStart, onStop }: { game: BeybladeGame, setGame: any, onStart: () => void, onStop: () => void }) {
+function BeybladeDashboard({ game, setGame, onStart, onStop, username }: { game: BeybladeGame, setGame: any, onStart: () => void, onStop: () => void, username?: string }) {
   const arenas = [
     { id: 'classic', name: 'Klasik', icon: <Disc /> },
     { id: 'magma', name: 'Magma', icon: <Flame /> },
@@ -4749,7 +4863,7 @@ function BeybladeDashboard({ game, setGame, onStart, onStop }: { game: BeybladeG
         <div className="flex items-center gap-4">
           <button 
             onClick={() => {
-              const url = `${window.location.origin}${window.location.pathname}?mode=beyblade&username=${game.players[0]?.nickname || 'streamer'}`;
+              const url = `${window.location.origin}${window.location.pathname}?mode=beyblade${username ? `&username=${username}` : ''}`;
               navigator.clipboard.writeText(url);
               alert('Beyblade URL kopyalandı!');
             }}
