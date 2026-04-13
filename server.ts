@@ -15,6 +15,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import compression from "compression";
 import morgan from "morgan";
+import multer from "multer";
 
 dotenv.config();
 
@@ -22,7 +23,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || "tikgifty_production_secret_8822";
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/tikgifty";
+let MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/tikgifty";
+
+if (!MONGODB_URI.startsWith("mongodb://") && !MONGODB_URI.startsWith("mongodb+srv://")) {
+  console.warn(`⚠️ Invalid MONGODB_URI scheme detected ("${MONGODB_URI}"). Falling back to default local MongoDB URI.`);
+  MONGODB_URI = "mongodb://127.0.0.1:27017/tikgifty";
+}
 
 // --- MongoDB Models ---
 const userSchema = new mongoose.Schema({
@@ -53,9 +59,25 @@ const User = mongoose.model('User', userSchema);
 const Settings = mongoose.model('Settings', settingsSchema);
 
 // --- Database Connection ---
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch(err => console.error("❌ MongoDB connection error:", err));
+const connectDB = async () => {
+  try {
+    await mongoose.connect(MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+    });
+    console.log("✅ Connected to MongoDB");
+  } catch (err: any) {
+    const isLocal = MONGODB_URI.includes('127.0.0.1') || MONGODB_URI.includes('localhost');
+    
+    if (isLocal) {
+      console.log("ℹ️ Local MongoDB not detected. Running in 'Guest Mode' (Auth and Cloud Settings disabled).");
+      console.log("💡 To enable cloud features, add a remote MONGODB_URI (e.g., MongoDB Atlas) to your environment variables.");
+    } else {
+      console.error("❌ MongoDB connection error:", err.message);
+    }
+  }
+};
+
+connectDB();
 
 async function startServer() {
   const app = express();
@@ -89,6 +111,37 @@ async function startServer() {
   }));
   app.use(express.json({ limit: '10kb' })); // Limit body size
 
+  // --- Multer Setup ---
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadPath = path.join(process.cwd(), 'uploads');
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+  });
+
+  const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    fileFilter: (req, file, cb) => {
+      const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'image/jpeg', 'image/png', 'image/gif'];
+      if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only audio and images are allowed.'));
+      }
+    }
+  });
+
+  // Serve uploads statically
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
   // Rate Limiting
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -120,6 +173,9 @@ async function startServer() {
   // --- Auth Routes ---
   app.post("/api/auth/register", async (req, res) => {
     try {
+      if (mongoose.connection.readyState !== 1) {
+        return res.status(503).json({ error: "Database offline. Self-hosted registration is currently unavailable." });
+      }
       const { email, password, displayName } = req.body;
       
       const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -200,6 +256,14 @@ async function startServer() {
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
+  });
+
+  // --- Upload Route ---
+  app.post("/api/upload", authenticateToken, upload.single('file'), (req: any, res) => {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({ url: fileUrl });
   });
 
   // Socket.io for TikTok Live
