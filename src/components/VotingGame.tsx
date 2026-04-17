@@ -188,7 +188,7 @@ export const VotingGameDashboard: React.FC<VotingGameDashboardProps> = ({ gameSt
               <div key={team.id} className="bg-[#111317] border border-white/10 rounded-xl p-5 space-y-4">
                 <div className="flex justify-between items-start">
                   <h3 className="text-white font-bold">Takım {index + 1}</h3>
-                  <button onClick={() => removeTeam(team.id)} className="text-gray-500 hover:text-red-500 transition-colors">
+                  <button onClick={() => removeTeam(team.id)} className="text-gray-500 hover:text-red-500 transition-colors" aria-label="Remove Team">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -315,7 +315,7 @@ export const VotingGameDashboard: React.FC<VotingGameDashboardProps> = ({ gameSt
                       className="w-full bg-black/50 border border-white/10 rounded-lg p-2 text-sm text-white focus:border-cyan-500 outline-none"
                     />
                   </div>
-                  <button onClick={() => removeGiftMultiplier(mult.id)} className="mt-5 p-2 text-gray-500 hover:text-red-500 transition-colors">
+                  <button onClick={() => removeGiftMultiplier(mult.id)} className="mt-5 p-2 text-gray-500 hover:text-red-500 transition-colors" aria-label="Remove Multiplier">
                     <Trash2 size={18} />
                   </button>
                 </div>

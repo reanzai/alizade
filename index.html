@@ -7,16 +7,24 @@
     <meta name="description" content="TikGifty ile TikTok canlı yayınlarınızı daha etkileşimli hale getirin. Hediye takibi, interaktif oyunlar, özel efektler ve TTS ile yayın kalitenizi artırın." />
     <meta name="keywords" content="tiktok, canlı yayın, hediye takibi, tiktok etkileşim, tikgifty, tiktok oyunları, beyblade oyunu, kelime oyunu, tiktok overlay, obs tiktok" />
     <meta name="author" content="TikGifty" />
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="https://tikgifty.com/" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#ff0050" />
     
+    <!-- Preconnects for performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://tikgifty.com/" />
     <meta property="og:title" content="TikGifty - TikTok Canlı Yayın Etkileşim Paneli" />
     <meta property="og:description" content="TikTok yayınlarınız için en gelişmiş etkileşim, hediye takip ve interaktif oyun sistemi. Yayınınıza renk katın!" />
     <meta property="og:image" content="https://tikgifty.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta property="og:site_name" content="TikGifty" />
     <meta property="og:locale" content="tr_TR" />
 
@@ -26,6 +34,7 @@
     <meta property="twitter:title" content="TikGifty - TikTok Canlı Yayın Etkileşim Paneli" />
     <meta property="twitter:description" content="TikTok yayınlarınız için en gelişmiş etkileşim ve hediye takip sistemi." />
     <meta property="twitter:image" content="https://tikgifty.com/og-image.png" />
+    <meta property="twitter:creator" content="@tikgifty" />
 
     <!-- Structured Data (JSON-LD) -->
     <script type="application/ld+json">
@@ -50,6 +59,12 @@
     </script>
   </head>
   <body>
+    <noscript>
+      <div style="padding: 20px; text-align: center; font-family: sans-serif;">
+        <h2>JavaScript Gerekli</h2>
+        <p>TikGifty'nin tüm özelliklerini (canlı hediye takibi, oyunlar ve etkileşimler) kullanabilmek için lütfen tarayıcınızda JavaScript'i etkinleştirin.</p>
+      </div>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

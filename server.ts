@@ -7,7 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import cors from "cors";
 import fs from "fs";
-import mongoose from "mongoose";
+import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
@@ -16,65 +16,28 @@ import rateLimit from "express-rate-limit";
 import compression from "compression";
 import morgan from "morgan";
 import multer from "multer";
-import mongoSanitize from "express-mongo-sanitize";
 
 dotenv.config();
+
+const prisma = new PrismaClient();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || "tikgifty_production_secret_8822";
-let MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/tikgifty";
+const DATABASE_URL = process.env.DATABASE_URL;
 
-if (!MONGODB_URI.startsWith("mongodb://") && !MONGODB_URI.startsWith("mongodb+srv://")) {
-  console.warn(`⚠️ Invalid MONGODB_URI scheme detected ("${MONGODB_URI}"). Falling back to default local MongoDB URI.`);
-  MONGODB_URI = "mongodb://127.0.0.1:27017/tikgifty";
+if (!DATABASE_URL) {
+  console.warn("⚠️ DATABASE_URL not detected. PostgreSQL features might be restricted.");
 }
 
-// --- MongoDB Models ---
-const userSchema = new mongoose.Schema({
-  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-  password: { type: String, required: true },
-  displayName: String,
-  photoURL: String,
-  plan: { type: String, enum: ['free', 'pro', 'admin'], default: 'free' },
-  subscriptionExpires: { type: Date, default: null },
-  isSubscribed: { type: Boolean, default: false },
-  role: { type: String, default: 'user' },
-  createdAt: { type: Date, default: Date.now }
-});
-
-const settingsSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
-  listSettings: { type: Object, default: {} },
-  giftSettings: { type: Object, default: {} },
-  layout: { type: Object, default: {} },
-  actions: { type: Array, default: [] },
-  overlayPresets: { type: Array, default: [] },
-  beybladeLeaderboard: { type: Array, default: [] },
-  pixelConquest: { type: Object, default: {} },
-  updatedAt: { type: Date, default: Date.now }
-});
-
-const User = mongoose.model('User', userSchema);
-const Settings = mongoose.model('Settings', settingsSchema);
-
-// --- Database Connection ---
+// (Removed MongoDB models and connection logic as we are using Prisma)
 const connectDB = async () => {
   try {
-    await mongoose.connect(MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
-    });
-    console.log("✅ Connected to MongoDB");
+    await prisma.$connect();
+    console.log("✅ Connected to PostgreSQL via Prisma");
   } catch (err: any) {
-    const isLocal = MONGODB_URI.includes('127.0.0.1') || MONGODB_URI.includes('localhost');
-    
-    if (isLocal) {
-      console.log("ℹ️ Local MongoDB not detected. Running in 'Guest Mode' (Auth and Cloud Settings disabled).");
-      console.log("💡 To enable cloud features, add a remote MONGODB_URI (e.g., MongoDB Atlas) to your environment variables.");
-    } else {
-      console.error("❌ MongoDB connection error:", err.message);
-    }
+    console.error("❌ Database connection error:", err.message);
   }
 };
 
@@ -89,9 +52,8 @@ async function startServer() {
   
   // Security & Performance Middleware
   app.use(helmet({
-    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false, // Disable for Vite dev compatibility, enable in production
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
   }));
-  app.use(mongoSanitize()); // Prevent NoSQL injection
   app.use(compression());
   app.use(morgan('combined'));
   const allowedOrigins = [
@@ -175,23 +137,37 @@ async function startServer() {
   // --- Auth Routes ---
   app.post("/api/auth/register", async (req, res) => {
     try {
-      if (mongoose.connection.readyState !== 1) {
-        return res.status(503).json({ error: "Database offline. Self-hosted registration is currently unavailable." });
-      }
       const { email, password, displayName } = req.body;
       
-      const existingUser = await User.findOne({ email: email.toLowerCase() });
-      if (existingUser) return res.status(400).json({ error: "Email already exists" });
+      // Basic Input Validation
+      if (!email || typeof email !== 'string' || email.length > 100 || !/^\S+@\S+\.\S+$/.test(email)) {
+        return res.status(400).json({ error: "Invalid email format" });
+      }
+      if (!password || typeof password !== 'string' || password.length < 6 || password.length > 100) {
+        return res.status(400).json({ error: "Password must be between 6 and 100 characters" });
+      }
+      if (displayName && (typeof displayName !== 'string' || displayName.length > 50)) {
+        return res.status(400).json({ error: "Display name is too long" });
+      }
+
+      const userExist = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+      if (userExist) return res.status(400).json({ error: "Email already exists" });
 
       const hashedPassword = await bcrypt.hash(password, 12);
-      const user = new User({ email, password: hashedPassword, displayName });
-      await user.save();
+      const user = await prisma.user.create({
+        data: {
+          email: email.toLowerCase(),
+          password: hashedPassword,
+          displayName
+        }
+      });
       
-      const settings = new Settings({ userId: user._id });
-      await settings.save();
+      const settings = await prisma.settings.create({
+        data: { userId: user.id }
+      });
 
-      const token = jwt.sign({ id: user._id, email: user.email, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
-      res.json({ token, user: { id: user._id, email: user.email, displayName: user.displayName, plan: user.plan } });
+      const token = jwt.sign({ id: user.id, email: user.email, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ token, user: { id: user.id, email: user.email, displayName: user.displayName, plan: user.plan } });
     } catch (err: any) {
       res.status(500).json({ error: "Registration failed" });
     }
@@ -199,20 +175,23 @@ async function startServer() {
 
   app.post("/api/auth/login", async (req, res) => {
     try {
-      if (mongoose.connection.readyState !== 1) throw new Error("Database offline");
-      
       const { email, password } = req.body;
-      const user = await User.findOne({ email: email.toLowerCase() });
+
+      if (!email || typeof email !== 'string' || !password || typeof password !== 'string') {
+        return res.status(400).json({ error: "Email and password are required" });
+      }
+
+      const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
       
       if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      const token = jwt.sign({ id: user._id, email: user.email, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
+      const token = jwt.sign({ id: user.id, email: user.email, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
       res.json({ 
         token, 
         user: { 
-          id: user._id, 
+          id: user.id, 
           email: user.email, 
           displayName: user.displayName, 
           plan: user.plan,
@@ -227,8 +206,15 @@ async function startServer() {
   // --- Subscription & Plan Routes ---
   app.get("/api/user/me", authenticateToken, async (req: any, res) => {
     try {
-      const user = await User.findById(req.user.id).select("-password");
-      res.json(user);
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id }
+      });
+      if (user) {
+        const { password, ...userWithoutPassword } = user;
+        res.json(userWithoutPassword);
+      } else {
+        res.status(404).json({ error: "User not found" });
+      }
     } catch (err: any) {
       res.status(500).json({ error: "Failed to fetch user data" });
     }
@@ -237,11 +223,10 @@ async function startServer() {
   // --- Settings Routes ---
   app.get("/api/settings", authenticateToken, async (req: any, res) => {
     try {
-      if (mongoose.connection.readyState !== 1) {
-        return res.json({ userId: req.user.id, listSettings: {}, giftSettings: {}, note: "Offline mode" });
-      }
-      const settings = await Settings.findOne({ userId: req.user.id });
-      res.json(settings || {});
+      const settings = await prisma.settings.findUnique({
+        where: { userId: req.user.id }
+      });
+      res.json(settings || { userId: req.user.id });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
@@ -260,11 +245,11 @@ async function startServer() {
       if (beybladeLeaderboard !== undefined) updateData.beybladeLeaderboard = beybladeLeaderboard;
       if (pixelConquest !== undefined) updateData.pixelConquest = pixelConquest;
 
-      const settings = await Settings.findOneAndUpdate(
-        { userId: req.user.id },
-        { $set: updateData },
-        { upsert: true, new: true }
-      );
+      const settings = await prisma.settings.upsert({
+        where: { userId: req.user.id },
+        update: updateData,
+        create: { ...updateData, userId: req.user.id }
+      });
       res.json({ status: "ok", settings });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -301,23 +286,28 @@ async function startServer() {
       socket.to(`room_${username}`).emit("request-state");
     });
 
-    socket.on("connect-tiktok", async (username: string, token: string) => {
+    socket.on("connect-tiktok", async (username: string, token?: string) => {
       try {
-        // Verify user plan for restrictions
-        const decoded: any = jwt.verify(token, JWT_SECRET);
-        const user = await User.findById(decoded.id);
-        
-        if (!user) return socket.emit("tiktok-error", "User not found");
-
-        // Example restriction: Free users can only connect for 30 mins
-        // (Logic can be added here)
+        let userId = null;
+        if (token) {
+          try {
+            const decoded: any = jwt.verify(token, JWT_SECRET);
+            userId = decoded.id;
+          } catch (e) {
+            console.warn("Invalid token provided to connect-tiktok");
+          }
+        }
 
         if (connections.has(socket.id)) {
           connections.get(socket.id)?.disconnect();
           connections.delete(socket.id);
         }
 
-        const tiktokConnection = new WebcastPushConnection(username);
+        const tiktokConnection = new WebcastPushConnection(username, {
+          processInitialData: true,
+          enableExtendedGiftInfo: true,
+          requestPollingIntervalMs: 2000
+        });
         
         tiktokConnection.connect().then(async state => {
           let profilePic = '';
@@ -328,8 +318,11 @@ async function startServer() {
               profilePic = state.roomInfo.owner.avatar_url.url_list[0];
             }
             
-            if (profilePic) {
-              await User.findByIdAndUpdate(decoded.id, { photoURL: profilePic, displayName: username });
+            if (profilePic && userId) {
+              await prisma.user.update({
+                where: { id: userId },
+                data: { photoURL: profilePic, displayName: username }
+              });
             }
           } catch (e) {
             console.error("Failed to extract profile pic", e);
@@ -338,7 +331,8 @@ async function startServer() {
           socket.join(`room_${username}`);
           io.to(`room_${username}`).emit("tiktok-connected", { roomId: state.roomId, username, profilePic });
         }).catch(err => {
-          socket.emit("tiktok-error", err.toString());
+          console.error(`TikTok Connection Error for ${username}:`, err);
+          socket.emit("tiktok-error", err.toString() || "Could not connect to TikTok. Make sure the user is LIVE.");
         });
 
         // Forward events

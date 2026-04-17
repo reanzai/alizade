@@ -292,9 +292,7 @@ interface ListSetting {
   enabled: boolean;
 }
 
-const IS_SELF_HOSTED = import.meta.env.VITE_SELF_HOSTED === 'true' || 
-                       window.location.hostname === 'tikgifty.com' || 
-                       window.location.hostname === 'www.tikgifty.com';
+const IS_SELF_HOSTED = true;
 
 export default function App() {
   const { t, i18n } = useTranslation();
@@ -590,7 +588,7 @@ export default function App() {
                 if (oldOwner) oldOwner.score--;
               }
               
-              grid[y][x] = { ownerId: player.id, color: player.color };
+              grid[y][x] = { ...cell, ownerId: player.id, color: player.color };
               conquered++;
             }
           }
@@ -711,13 +709,13 @@ export default function App() {
     if (!user || !isPro || beybladeGame.leaderboard.length === 0) return;
 
     if (IS_SELF_HOSTED && authToken) {
-      fetch('/api/beyblade/leaderboard', {
+      fetch('/api/settings', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify(beybladeGame.leaderboard)
+        body: JSON.stringify({ beybladeLeaderboard: beybladeGame.leaderboard })
       })
       .then(async res => {
         if (!res.ok) {
@@ -1172,7 +1170,7 @@ export default function App() {
             return;
           }
           
-          setUser({ uid: userData._id, email: userData.email, displayName: userData.displayName, photoURL: userData.photoURL });
+          setUser({ uid: userData.id, email: userData.email, displayName: userData.displayName, photoURL: userData.photoURL });
           setUserProfile({ isSubscribed: userData.isSubscribed, plan: userData.plan, role: userData.role });
           
           if (settingsData) {
@@ -1240,13 +1238,13 @@ export default function App() {
     if (!user || !isPro) return;
 
     if (IS_SELF_HOSTED && authToken) {
-      fetch('/api/gift-settings', {
+      fetch('/api/settings', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${authToken}`
         },
-        body: JSON.stringify(newSettings)
+        body: JSON.stringify({ giftSettings: newSettings })
       })
       .then(async res => {
         if (!res.ok) {
@@ -2353,6 +2351,7 @@ export default function App() {
           <button 
             className="md:hidden p-2 text-gray-400 hover:text-white"
             onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Open Menu"
           >
             <Menu size={24} />
           </button>
@@ -2883,7 +2882,7 @@ export default function App() {
                             <h4 className="text-sm font-black text-white uppercase tracking-widest">
                               Editing: {layout[editingLayoutElement].name}
                             </h4>
-                            <button onClick={() => setEditingLayoutElement(null)} className="text-gray-500 hover:text-white">
+                            <button onClick={() => setEditingLayoutElement(null)} className="text-gray-500 hover:text-white" aria-label="Close">
                               <X size={16} />
                             </button>
                           </div>
@@ -3463,7 +3462,7 @@ export default function App() {
                       </div>
                       <h3 className="text-2xl font-bold text-white">Checkout</h3>
                     </div>
-                    <button onClick={() => setIsCheckingOut(false)} className="p-2 text-gray-500 hover:text-white transition-colors">
+                    <button onClick={() => setIsCheckingOut(false)} className="p-2 text-gray-500 hover:text-white transition-colors" aria-label="Close">
                       <X size={24} />
                     </button>
                   </div>
@@ -3841,7 +3840,7 @@ export default function App() {
                   <h3 className="text-2xl font-black tracking-tighter text-white">Edit Trigger</h3>
                   <p className="text-sm text-gray-500">Configure when actions should be triggered</p>
                 </div>
-                <button onClick={() => setEditingTrigger(null)} className="p-2 text-gray-500 hover:text-white transition-colors">
+                <button onClick={() => setEditingTrigger(null)} className="p-2 text-gray-500 hover:text-white transition-colors" aria-label="Close">
                   <X size={24} />
                 </button>
               </div>
@@ -3993,7 +3992,7 @@ export default function App() {
                   <h3 className="text-2xl font-black tracking-tighter text-white">Edit Action</h3>
                   <p className="text-sm text-gray-500">Customize how this action behaves</p>
                 </div>
-                <button onClick={() => setEditingAction(null)} className="p-2 text-gray-500 hover:text-white transition-colors">
+                <button onClick={() => setEditingAction(null)} className="p-2 text-gray-500 hover:text-white transition-colors" aria-label="Close">
                   <X size={24} />
                 </button>
               </div>

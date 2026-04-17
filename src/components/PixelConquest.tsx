@@ -176,7 +176,7 @@ export function PixelConquestDashboard({ state, setState, onStart, onStop, usern
                         }}
                         className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
                       />
-                      <button onClick={() => handleKick(player.id)} className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
+                      <button onClick={() => handleKick(player.id)} className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" aria-label="Kick Player">
                         <X size={16} />
                       </button>
                     </div>

@@ -1,0 +1,53 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  password            String
+  displayName         String?
+  photoURL            String?
+  plan                String    @default("free")
+  subscriptionExpires DateTime?
+  isSubscribed        Boolean   @default(false)
+  role                String    @default("user")
+  createdAt           DateTime  @default(now())
+  wallets             Wallet[]
+  settings            Settings?
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  address   String   @unique
+  balance   Float    @default(0)
+  currency  String   @default("USD")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Settings {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id])
+  listSettings        Json     @default("{}")
+  giftSettings        Json     @default("{}")
+  layout              Json     @default("{}")
+  actions             Json     @default("[]")
+  overlayPresets      Json     @default("[]")
+  beybladeLeaderboard Json     @default("[]")
+  pixelConquest       Json     @default("{}")
+  updatedAt           DateTime @default(now()) @updatedAt
+}
