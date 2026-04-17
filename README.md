@@ -22,25 +22,47 @@ TikGifty, TikTok canlı yayıncıları için geliştirilmiş, izleyici etkileşi
 *   **Multer:** Kullanıcıların özel ses ve görsel dosyalarını yükleyebilmesi için dosya yükleme yönetimi.
 
 ### Veritabanı ve Kimlik Doğrulama
-*   **Firebase:** Google ile giriş (Authentication) ve Firestore veritabanı (kullanıcı profilleri, ayarlar ve oyun skorları için).
-*   **MongoDB (Mongoose):** Alternatif veri saklama ve kullanıcı yönetimi (Self-hosted mod için).
+*   **PostgreSQL:** Uygulamanın ana veritabanı olarak seçildi (User, Wallet ve Settings verileri için).
+*   **Prisma ORM:** Tip güvenliği ve veritabanı sorgu yönetimi için kullanılan modern SQL arayüzü.
+*   **Firebase (Opsiyonel):** Google ile giriş (Authentication) desteği. (Sistem artık öncelikli olarak PostgreSQL & Express tabanlı 'Self-hosted' mimariyi kullanmaktadır).
+
+## 🛠️ Yapılan Son Güncellemeler (PostgreSQL Geçişi)
+
+Projeye eklenen ve güncellenen temel özellikler:
+
+1.  **MongoDB'den PostgreSQL'e Geçiş:**
+    *   Veritabanı altyapısı MongoDB'den tamamen PostgreSQL'e taşındı.
+    *   `prisma/schema.prisma` yapılandırması PostgreSQL ve UUID (Benzersiz Kimlik) sistemine göre optimize edildi.
+    *   Mongoose bağımlılığı projeden kaldırıldı ve tüm veritabanı işlemleri `@prisma/client` üzerinden yönetilmeye başlandı.
+
+2.  **Prisma Entegrasyonu:**
+    *   `PrismaClient` kullanılarak `User`, `Wallet` ve `Settings` modelleri oluşturuldu.
+    *   `prisma.config.ts` üzerinden dinamik veritabanı bağlantı yönetimi sağlandı.
+
+3.  **Backend (Sunucu) Modernizasyonu:**
+    *   Kayıt, giriş ve kullanıcı verisi çekme işlemleri PostgreSQL/Prisma altyapısına uyarlandı.
+    *   Ayarlar (`Settings`) yönetimi, tüm konfigürasyonu (Hediye ayarları, oyun tabloları vb.) tek bir tabloda tutacak şekilde `upsert` (varsa güncelle, yoksa oluştur) mimarisine dönüştürüldü.
+    *   NoSQL'e özgü filtreler (mongo-sanitize vb.) kaldırılarak SQL güvenliği için gerekli önlemler alındı.
+
+4.  **Frontend (İstemci) Uyarlamaları:**
+    *   Uygulama artık varsayılan olarak `IS_SELF_HOSTED` modunda çalışarak PostgreSQL tabanlı backend ile konuşmaktadır.
+    *   Hediye ayarları ve oyun lider tabloları gibi dağınık API çağrıları merkezi `/api/settings` endpoint'inde birleştirildi.
+    *   Veri yapılarındaki `_id` bağımlılığı `id` yapısına güncellenerek SQL uyumluluğu sağlandı.
 
 ## 📂 Proje Yapısı
 
 ```text
+├── prisma/                 # Veritabanı şeması ve migrasyon dosyaları
 ├── public/                 # Statik dosyalar (robots.txt, sitemap.xml vb.)
 ├── src/                    # Frontend (React) kaynak kodları
-│   ├── components/         # Yeniden kullanılabilir UI bileşenleri (Oyunlar, Overlay vb.)
-│   ├── App.tsx             # Ana React bileşeni ve uygulamanın kalbi
-│   ├── main.tsx            # React uygulamasının başlangıç noktası
-│   ├── firebase.ts         # Firebase yapılandırması ve yardımcı fonksiyonlar
-│   ├── index.css           # Global Tailwind CSS stilleri
+│   ├── components/         # UI bileşenleri (Oyunlar, Overlay vb.)
+│   ├── App.tsx             # Ana React bileşeni (Uygulamanın kalbi)
+│   ├── firebase.ts         # Firebase yardımcı fonksiyonları
 │   └── i18n.ts             # Dil ve çeviri yapılandırması
-├── server.ts               # Backend (Express & Socket.IO) başlangıç noktası
-├── index.html              # Ana HTML şablonu (SEO etiketleri içerir)
-├── package.json            # Proje bağımlılıkları ve script'ler
-├── vite.config.ts          # Vite yapılandırma dosyası
-└── README.md               # Proje dökümantasyonu
+├── server.ts               # Backend (Express & Socket.IO & Prisma)
+├── prisma.config.ts        # Prisma veritabanı bağlantı ayarları
+├── .env.example            # Gerekli değişkenlerin (DATABASE_URL vb.) şablonu
+└── package.json            # Bağımlılıklar ve script'ler
 ```
 
 ## ⚙️ Nasıl Çalışır?
