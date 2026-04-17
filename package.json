@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
+    "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/matter-js": "^0.20.2",
@@ -39,6 +40,7 @@
     "morgan": "^1.10.1",
     "motion": "^12.23.24",
     "multer": "^2.1.1",
+    "pg": "^8.20.0",
     "prisma": "^7.7.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config(); // Must be explicitly called first
+
 import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
@@ -7,29 +10,28 @@ import path from "path";
 import { fileURLToPath } from "url";
 import cors from "cors";
 import fs from "fs";
+
 import { PrismaClient } from "@prisma/client";
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import dotenv from "dotenv";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import compression from "compression";
 import morgan from "morgan";
 import multer from "multer";
 
-dotenv.config();
-
-const prisma = new PrismaClient();
+const connectionString = process.env.DATABASE_URL || "postgresql://localhost:5432/tikgifty";
+const pool = new Pool({ connectionString });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || "tikgifty_production_secret_8822";
-const DATABASE_URL = process.env.DATABASE_URL;
-
-if (!DATABASE_URL) {
-  console.warn("⚠️ DATABASE_URL not detected. PostgreSQL features might be restricted.");
-}
 
 // (Removed MongoDB models and connection logic as we are using Prisma)
 const connectDB = async () => {
