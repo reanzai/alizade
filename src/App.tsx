@@ -416,7 +416,8 @@ export default function App() {
       gridWidth: 40,
       gridHeight: 30,
       shieldMax: 100,
-      reignMode: true
+      reignMode: true,
+      playerColors: ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316']
     }
   });
 
@@ -531,7 +532,7 @@ export default function App() {
       
       let player = players.find(p => p.id === data.uniqueId);
       if (!player) {
-        const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
+        const colors = prev.settings.playerColors && prev.settings.playerColors.length > 0 ? prev.settings.playerColors : ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
         player = {
           id: data.uniqueId,
           nickname: data.nickname,

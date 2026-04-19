@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, Play, Square, Users, Shield, Map as MapIcon, RefreshCw, X, Crown, Zap, Copy } from 'lucide-react';
+import { Settings, Play, Square, Users, Shield, Map as MapIcon, RefreshCw, X, Crown, Zap, Copy, Palette, Plus } from 'lucide-react';
 
 // ... (keep existing interfaces)
 export interface PixelPlayer {
@@ -28,6 +28,7 @@ export interface PixelConquestState {
     gridHeight: number;
     shieldMax: number;
     reignMode: boolean;
+    playerColors?: string[];
   };
 }
 
@@ -232,6 +233,61 @@ export function PixelConquestDashboard({ state, setState, onStart, onStop, usern
                   </button>
                 </div>
                 <p className="text-[10px] text-gray-500 mt-2">{t('pixelConquest.reignDesc')}</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider flex items-center gap-2">
+                  <Palette size={14} />
+                  Player Pool Colors
+                </label>
+                <div className="bg-black/40 border border-white/10 rounded-lg p-3">
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {(state.settings.playerColors || COLORS).map((color, idx) => (
+                      <div key={idx} className="relative group">
+                        <input 
+                          type="color" 
+                          value={color}
+                          onChange={(e) => {
+                            setState((prev: PixelConquestState) => {
+                              const newColors = [...(prev.settings.playerColors || COLORS)];
+                              newColors[idx] = e.target.value;
+                              return { ...prev, settings: { ...prev.settings, playerColors: newColors } };
+                            });
+                          }}
+                          className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 p-0"
+                        />
+                        {(state.settings.playerColors || COLORS).length > 1 && (
+                          <button
+                            onClick={() => {
+                              setState((prev: PixelConquestState) => {
+                                const newColors = [...(prev.settings.playerColors || COLORS)];
+                                newColors.splice(idx, 1);
+                                return { ...prev, settings: { ...prev.settings, playerColors: newColors } };
+                              });
+                            }}
+                            className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md"
+                          >
+                            <X size={10} className="text-white" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => {
+                        setState((prev: PixelConquestState) => {
+                          const newColors = [...(prev.settings.playerColors || COLORS), '#ffffff'];
+                          return { ...prev, settings: { ...prev.settings, playerColors: newColors } };
+                        });
+                      }}
+                      className="w-8 h-8 rounded bg-white/10 hover:bg-white/20 border border-white/20 flex flex-col items-center justify-center transition-colors"
+                    >
+                      <Plus size={14} className="text-white shadow-none" />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    Colors configured here will be randomly assigned to new players joining the conquest.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
