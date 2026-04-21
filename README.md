@@ -77,6 +77,31 @@ Projeye eklenen ve güncellenen temel özellikler:
     *   İzleyicilerin gönderdiği hediyelere veya yorumlara göre oyunları (Beyblade, Pixel Conquest vb.) tetikler ve günceller.
 6.  **OBS Entegrasyonu:** Kullanıcılar, "Overlay" modunu kullanarak kendilerine özel oluşturulan URL'yi OBS (Open Broadcaster Software) gibi yayın programlarına "Tarayıcı Kaynağı" (Browser Source) olarak ekler ve grafikleri doğrudan yayın ekranına yansıtır.
 
+## 🌐 VDS ve Domain ile Yayına Alma (Public Making)
+
+Uygulamanızı bir sunucuya (VDS) kurup kendi domain adresiniz üzerinden yayına açmak için aşağıdaki adımları takip edebilirsiniz. Detaylı teknik rehber için **[VDS_SETUP.md](./VDS_SETUP.md)** dosyasına göz atın.
+
+### 1. Sunucu Hazırlığı
+*   Ubuntu tabanlı bir VDS edinin.
+*   Node.js, PostgreSQL, Nginx ve PM2 kurulumlarını yapın.
+
+### 2. Uygulama ve Veritabanı
+*   Proje dosyalarını sunucuya yükleyin ve `npm install` ile bağımlılıkları kurun.
+*   PostgreSQL veritabanınızı oluşturun ve `.env` dosyasındaki `DATABASE_URL` değişkenini güncelleyin.
+*   `npx prisma generate` ve `npx prisma migrate deploy` komutları ile veritabanı şemasını sunucuda oluşturun.
+
+### 3. Derleme ve Başlatma (PM2)
+*   Uygulamayı derleyin: `npm run build` (Bu işlem hem React frontend'ini `dist/` klasörüne çıkarır hem de backend `server.ts` dosyasını `dist/server.js` olarak hazırlar).
+*   Uygulamayı PM2 ile arka planda başlatın: 
+    ```bash
+    pm2 start dist/server.js --name tikgifty-backend
+    ```
+
+### 4. Domain ve Nginx Konfigürasyonu
+*   Domain adresinizin A kaydını sunucunuzun IP adresine yönlendirin.
+*   Nginx üzerinden bir `server` bloğu oluşturarak 80 portuna gelen istekleri `dist/` klasörüne veya API isteklerini sunucunun 3000 portuna yönlendirin (Ters Vekil - Reverse Proxy).
+*   SSL (HTTPS) için Certbot (Let's Encrypt) kullanarak güvenli bağlantı kurun.
+
 ## 🛠 Kurulum ve Çalıştırma
 
 Projeyi yerel ortamınızda çalıştırmak için:
