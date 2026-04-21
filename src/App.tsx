@@ -57,6 +57,7 @@ import {
   Save,
   Download,
   Upload,
+  MicOff,
   Map as MapIcon,
   Menu,
   Users
@@ -90,9 +91,11 @@ import {
 } from './firebase';
 import { PixelConquestDashboard, PixelConquestOverlay, PixelConquestState } from './components/PixelConquest';
 import { VotingGameDashboard, VotingGameOverlay, VotingGameState } from './components/VotingGame';
+import { ActionsAndEvents } from './components/ActionsAndEvents';
+import { Section } from './components/Section';
 
 // --- Types ---
-interface TikTokAction {
+export interface TikTokAction {
   id: string;
   name: string;
   type: 'alert' | 'sound' | 'animation' | 'tts';
@@ -111,7 +114,14 @@ interface TikTokAction {
   fontSize?: string;
 }
 
-interface TikTokEventTrigger {
+export interface EventTimer {
+  id: string;
+  active: boolean;
+  intervalMinutes: number;
+  actionId: string;
+}
+
+export interface TikTokEventTrigger {
   id: string;
   active: boolean;
   user: string;
@@ -195,6 +205,7 @@ interface ActiveAlert {
   type: 'alert' | 'sound' | 'animation' | 'tts';
   textColor?: string;
   fontSize?: string;
+  screen?: string;
 }
 
 interface WordGame {
@@ -900,6 +911,8 @@ export default function App() {
     }
   ]);
 
+  const [timers, setTimers] = useState<EventTimer[]>([]);
+
   const [eventTriggers, setEventTriggers] = useState<TikTokEventTrigger[]>([
     {
       id: '1',
@@ -991,7 +1004,9 @@ export default function App() {
       ...newSettings,
       actions,
       overlayPresets: savedPresets,
-      pixelConquest
+      pixelConquest,
+      events: eventTriggers,
+      timers
     };
 
     fetch('/api/settings', {
@@ -1181,6 +1196,8 @@ export default function App() {
             if (settingsData.actions && settingsData.actions.length > 0) setActions(settingsData.actions);
             if (settingsData.overlayPresets && settingsData.overlayPresets.length > 0) setSavedPresets(settingsData.overlayPresets);
             if (settingsData.pixelConquest && Object.keys(settingsData.pixelConquest).length > 0) setPixelConquest(settingsData.pixelConquest);
+            if (settingsData.events && settingsData.events.length > 0) setEventTriggers(settingsData.events);
+            if (settingsData.timers && settingsData.timers.length > 0) setTimers(settingsData.timers);
           }
           setIsAuthLoading(false);
         })
@@ -1272,12 +1289,28 @@ export default function App() {
     // Check for overlay mode in URL
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
-    if (mode === 'overlay') {
+    if (mode === 'overlay' || mode === 'actions') {
       setIsOverlayMode(true);
     } else if (mode === 'game' || mode === 'leaderboard' || mode === 'stream' || mode === 'beyblade' || mode === 'pixel-conquest' || mode === 'voting') {
       setGameOverlayMode(mode as any);
     }
   }, []);
+
+  // Timer Orchestration
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    const activeTimers = timers.filter(t => t.active && t.actionId);
+    if (activeTimers.length === 0) return;
+
+    const intervals = activeTimers.map(timer => {
+      return setInterval(() => {
+        triggerAction('System', timer.actionId);
+      }, timer.intervalMinutes * 60 * 1000);
+    });
+
+    return () => intervals.forEach(clearInterval);
+  }, [isConnected, timers]);
 
   const triggerAction = (nickname: string, actionId: string) => {
     const action = actions.find(a => a.id === actionId);
@@ -1295,7 +1328,8 @@ export default function App() {
         soundUrl: action.soundUrl,
         type: action.type,
         textColor: action.textColor,
-        fontSize: action.fontSize
+        fontSize: action.fontSize,
+        screen: action.screen
       };
       setActiveAlerts(prev => [...prev, newAlert]);
 
@@ -2137,7 +2171,9 @@ export default function App() {
             }}
           >
             <AnimatePresence>
-              {activeAlerts.map((alert) => (
+              {activeAlerts
+                .filter(alert => !new URLSearchParams(window.location.search).get('screen') || alert.screen === new URLSearchParams(window.location.search).get('screen'))
+                .map((alert) => (
                 <motion.div
                   key={alert.id}
                   initial={{ opacity: 0, scale: 0.5, y: 100 }}
@@ -2260,11 +2296,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0b0d] text-gray-300 font-sans selection:bg-cyan-500/30">
+    <div className="min-h-screen bg-[#0B0E14] text-gray-300 font-sans selection:bg-cyan-500/30">
       <Helmet>
         <title>{`TikGifty - ${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`}</title>
       </Helmet>
-      {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <div 
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden"
@@ -2273,501 +2308,297 @@ export default function App() {
       )}
 
       {/* Sidebar */}
-      <div className={`fixed left-0 top-0 bottom-0 w-16 bg-[#111317] border-r border-white/5 flex flex-col items-center py-6 gap-6 z-50 transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="w-10 h-10 bg-cyan-500 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/20 mb-4 shrink-0">
-          <Zap className="text-white fill-white" size={20} />
+      <div className={`fixed left-0 top-0 bottom-0 w-64 bg-[#0F131A] border-r border-[#1C202B] flex flex-col py-6 z-50 transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        {/* Logo Area */}
+        <div className="flex items-center gap-3 px-6 mb-8 mt-2">
+          <Zap size={28} className="text-cyan-400 fill-cyan-400" />
+          <span className="text-2xl font-black italic tracking-tight">
+            <span className="text-cyan-400">Tik</span>
+            <span className="text-pink-500">Gifty</span>
+          </span>
         </div>
-        
-        <div className="flex-1 overflow-y-auto w-full no-scrollbar">
-          <nav className="flex flex-col gap-2 w-full px-2">
+
+        {/* Creator Hub Title */}
+        <div className="px-6 mb-6">
+          <h3 className="text-white font-bold text-[17px] tracking-wide leading-tight">Creator Hub</h3>
+          <div className="flex items-center gap-2 mt-1.5">
+            <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(6,182,212,0.8)] ${isConnected ? 'bg-cyan-400' : 'bg-red-500'}`}></div>
+            <span className="text-cyan-400 text-[10px] font-bold uppercase tracking-wider">
+              {isConnected ? 'LIVE STATUS: ONLINE' : 'OFFLINE'}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto w-full no-scrollbar px-0">
+          <nav className="flex flex-col gap-1 w-full">
             <SidebarItem 
               icon={<Layout size={20} />} 
               active={activeTab === 'dashboard'} 
               onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
-              label={t('nav.dashboard')}
+              label="Dashboard"
             />
             <SidebarItem 
               icon={<Zap size={20} />} 
               active={activeTab === 'actions'} 
               onClick={() => { setActiveTab('actions'); setIsMobileMenuOpen(false); }}
-              label={t('nav.actions')}
-            />
-            <SidebarItem 
-              icon={<Activity size={20} />} 
-              active={activeTab === 'events'} 
-              onClick={() => { setActiveTab('events'); setIsMobileMenuOpen(false); }}
-              label={t('nav.events')}
+              label="TikGifty"
             />
             <SidebarItem 
               icon={<Monitor size={20} />} 
               active={activeTab === 'overlay'} 
               onClick={() => { setActiveTab('overlay'); setIsMobileMenuOpen(false); }}
-              label={t('nav.overlay')}
+              label="Overlays"
             />
             <SidebarItem 
               icon={<Trophy size={20} />} 
               active={activeTab === 'leaderboard'} 
               onClick={() => { setActiveTab('leaderboard'); setIsMobileMenuOpen(false); }}
-              label={t('nav.leaderboard')}
+              label="Analytics"
             />
             <SidebarItem 
               icon={<Gamepad2 size={20} />} 
               active={activeTab === 'games' || activeTab === 'kelime-oyunu' || activeTab === 'beyblade' || activeTab === 'pixel-conquest' || activeTab === 'voting'} 
               onClick={() => { setActiveTab('games'); setIsMobileMenuOpen(false); }}
-              label="Oyunlar"
-            />
-            <SidebarItem 
-              icon={<CreditCard size={20} />} 
-              active={activeTab === 'pricing'} 
-              onClick={() => { setActiveTab('pricing'); setIsMobileMenuOpen(false); }}
-              label={t('nav.pricing')}
-              badge={isPro ? 'Active' : undefined}
+              label="Assets"
             />
             <SidebarItem 
               icon={<Settings size={20} />} 
               active={activeTab === 'settings'} 
               onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
-              label={t('nav.settings')}
-            />
-            <SidebarItem 
-              icon={<Globe size={20} />} 
-              active={activeTab === 'about'} 
-              onClick={() => { setActiveTab('about'); setIsMobileMenuOpen(false); }}
-              label={t('nav.about')}
+              label="Settings"
             />
           </nav>
         </div>
 
-        <div className="mt-auto flex flex-col items-center gap-4 pb-4 shrink-0">
-          <div className="group relative">
-            <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'User'}&background=random`} alt={user?.displayName || 'User'} className="w-8 h-8 rounded-lg border border-white/10 cursor-pointer" />
-          </div>
-          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-red-500'}`} />
+        <div className="mt-auto px-6 pb-2 space-y-4">
+          <button className={`w-full py-3.5 rounded-lg text-sm font-black uppercase tracking-widest text-[#0B0E14] ${isConnected ? 'bg-cyan-400 hover:bg-cyan-300' : 'bg-pink-500 hover:bg-pink-400'} transition-all flex items-center justify-center gap-2`}>
+            <Monitor size={18} /> {isConnected ? 'Go Live' : 'Go Live'}
+          </button>
         </div>
       </div>
 
       {/* Top Header */}
-      <header className="fixed top-0 left-0 md:left-16 right-0 h-16 bg-[#111317] border-b border-white/5 flex items-center justify-between px-4 md:px-8 z-40">
-        <div className="flex items-center gap-4 md:gap-6">
+      <header className="fixed top-0 left-0 md:left-64 right-0 h-[72px] bg-[#0A0D14]/90 backdrop-blur-md border-b border-[#1C202B] flex items-center justify-between px-4 md:px-8 z-40">
+        <div className="flex items-center gap-4">
           <button 
             className="md:hidden p-2 text-gray-400 hover:text-white"
-            onClick={() => setIsMobileMenuOpen(true)}
-            aria-label="Open Menu"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
             <Menu size={24} />
           </button>
-          <div className="flex items-center gap-3 hidden sm:flex">
-            <div className="w-8 h-8 bg-pink-500 rounded-lg flex items-center justify-center shadow-lg shadow-pink-500/20">
-              <Zap size={16} className="text-white fill-white" />
-            </div>
-            <span className="text-sm font-black tracking-tighter text-white uppercase">Tik Gifty {isPro && <span className="text-pink-500">Pro</span>}</span>
-          </div>
-          <div className="h-4 w-[1px] bg-white/10" />
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-cyan-500' : 'bg-red-500'}`} />
-            <span className="text-xs font-bold uppercase tracking-widest text-gray-500">
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
-          </div>
-          <div className="h-4 w-[1px] bg-white/10" />
-          <div className="flex items-center gap-4 bg-black/20 rounded-lg px-3 py-1.5 border border-white/5">
-            <Search size={14} className="text-gray-500" />
-            <input 
-              type="text" 
-              placeholder="TikTok Username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="bg-transparent border-none outline-none text-xs font-bold w-40"
-            />
+          
+          {/* Mock Search Bar */}
+          <div className="hidden md:flex items-center bg-[#151923] border border-[#252A36] rounded-full px-4 h-10 w-80 text-sm text-gray-400">
+            <Search size={16} className="mr-2" />
+            <span className="opacity-70">SEARCH COMMANDS, FOLLOWERS...</span>
           </div>
         </div>
-
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => setIsMuted(!isMuted)}
-            className={`p-2.5 rounded-lg transition-all border ${
-              isMuted 
-                ? 'bg-red-500/10 border-red-500/20 text-red-500' 
-                : 'bg-white/5 border-white/5 text-gray-400 hover:text-white'
-            }`}
-            title={isMuted ? "Unmute All" : "Mute All"}
-          >
-            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+        
+        <div className="flex items-center gap-4 md:gap-6">
+          <button className="relative text-gray-400 hover:text-white transition-colors">
+            <Bell size={20} />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-pink-500 rounded-full border-2 border-[#0A0D14]"></span>
           </button>
-          <div className="h-8 w-[1px] bg-white/10" />
-          <button 
-            onClick={isConnected ? handleDisconnect : handleConnect}
-            className={`px-3 md:px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
-              isConnected 
-                ? 'bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500 hover:text-white' 
-                : 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20 hover:scale-105'
-            }`}
-          >
-            {isConnected ? <Square size={14} /> : <Play size={14} fill="currentColor" />}
-            <span className="hidden sm:inline">{isConnected ? 'Disconnect' : 'Connect to TikTok'}</span>
-          </button>
-          <div className="h-8 w-[1px] bg-white/10 hidden sm:block" />
-          
-          {/* Language Switcher */}
-          <div className="flex items-center gap-1 md:gap-2 bg-black/40 border border-white/10 rounded-lg p-1">
-            <button 
-              onClick={() => i18n.changeLanguage('tr')}
-              className={`px-2 py-1 rounded text-xs font-bold transition-colors ${i18n.language === 'tr' ? 'bg-cyan-500 text-white' : 'text-gray-500 hover:text-white'}`}
-            >
-              TR
-            </button>
-            <button 
-              onClick={() => i18n.changeLanguage('en')}
-              className={`px-2 py-1 rounded text-xs font-bold transition-colors ${i18n.language === 'en' || i18n.language.startsWith('en') ? 'bg-cyan-500 text-white' : 'text-gray-500 hover:text-white'}`}
-            >
-              EN
-            </button>
-          </div>
-
-          <div className="h-8 w-[1px] bg-white/10 hidden sm:block" />
           <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold text-white leading-none">{user?.displayName}</p>
-              <p className="text-[10px] text-gray-500 font-medium uppercase tracking-tighter mt-1">
-                {isPro ? t('header.proCreator') : t('header.freePlan')} {IS_SELF_HOSTED && `(${t('header.selfHosted')})`}
-              </p>
-            </div>
-            <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'User'}&background=random`} alt={user?.displayName || 'User'} className="w-8 h-8 rounded-lg border border-white/10" />
+             <div className="hidden md:flex flex-col text-right">
+                <span className="text-sm font-bold text-white">{user?.displayName || 'Creator'}</span>
+                <span className="text-[10px] font-black tracking-widest text-cyan-400 uppercase">PRO PARTNER</span>
+             </div>
+             <img src={user?.photoURL || `https://ui-avatars.com/api/?name=${user?.displayName || 'User'}&background=random`} alt="Profile" className="w-10 h-10 rounded-full border-2 border-cyan-400" />
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="pl-0 md:pl-16 pt-16 min-h-screen">
-        <div className="p-4 md:p-8 max-w-[1600px] mx-auto">
-          {activeTab === 'dashboard' && (
-            <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard label="Live Viewers" value={stats.viewers.toString()} icon={<Eye size={20} />} />
-                <StatCard label="Total Likes" value={stats.likes.toString()} icon={<Heart size={20} />} />
-                <StatCard label="New Follows" value={stats.follows.toString()} icon={<UserPlus size={20} />} />
-                <StatCard label="Gifts Received" value={stats.gifts.toString()} icon={<Gift size={20} />} />
+      <main className="pt-24 md:pl-64 p-4 md:p-8 space-y-6 max-w-[1600px] mx-auto min-h-screen">
+      
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6">
+            
+            {/* Hero Section */}
+            <div className="relative overflow-hidden bg-gradient-to-r from-cyan-900/40 via-[#151923] to-[#151923] border border-[#252A36] rounded-[24px] p-8 md:p-12 flex flex-col justify-between min-h-[300px]">
+               <div className="absolute top-6 left-6 flex items-center gap-2 bg-red-500/20 text-red-500 px-3 py-1.5 rounded-full text-xs font-bold border border-red-500/20">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                  PREVIEW MODE
+               </div>
+               
+               <div className="mt-16 md:mt-auto space-y-6 z-10 w-full md:w-1/2">
+                 <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase">READY FOR PRIME TIME?</h1>
+                 <div className="flex flex-wrap items-center gap-4">
+                   <button className="flex items-center gap-2 bg-cyan-400 text-[#0A0D14] px-6 py-3 rounded-xl font-bold hover:bg-cyan-300 transition-colors">
+                     <Zap size={18} />
+                     Go Live
+                   </button>
+                   <button className="flex items-center gap-2 bg-[#1A1F2C] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#252A36] border border-[#252A36] transition-colors">
+                     <MicOff size={18} />
+                     Mute
+                   </button>
+                   <button 
+                     onClick={() => setActiveTab('overlay')}
+                     className="flex items-center gap-2 bg-[#1A1F2C] text-white px-6 py-3 rounded-xl font-bold hover:bg-[#252A36] border border-[#252A36] transition-colors"
+                   >
+                     <Monitor size={18} />
+                     Overlays
+                   </button>
+                 </div>
+               </div>
+               
+               {/* Background abstract decoration */}
+               <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-black/20 to-transparent pointer-events-none hidden md:block"></div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-[#151923] border border-[#252A36] p-6 rounded-2xl flex flex-col justify-between min-h-[140px]">
+                 <div className="flex justify-between items-start">
+                   <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center text-cyan-400">
+                     <Eye size={20} />
+                   </div>
+                   <span className="text-cyan-400 text-xs font-bold bg-cyan-500/10 px-2 py-1 rounded">+12%</span>
+                 </div>
+                 <div className="mt-4">
+                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">VIEWERS</p>
+                   <p className="text-3xl font-black text-white">{stats.viewers.toLocaleString()}</p>
+                 </div>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-6">
-                  <Section title="Recent Events" description="Real-time stream activity log">
-                    <div className="bg-[#111317] border border-white/5 rounded-xl overflow-hidden">
-                      <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
-                        {events.length === 0 ? (
-                          <div className="p-20 text-center text-gray-600">
-                            <Activity size={48} className="mx-auto mb-4 opacity-20" />
-                            <p className="text-sm font-medium">Waiting for stream events...</p>
+              
+              <div className="bg-[#151923] border border-[#252A36] p-6 rounded-2xl flex flex-col justify-between min-h-[140px]">
+                 <div className="flex justify-between items-start">
+                   <div className="w-10 h-10 rounded-xl bg-pink-500/10 flex items-center justify-center text-pink-500">
+                     <Share2 size={20} /> {/* Diamond icon substitute */}
+                   </div>
+                   <span className="text-pink-500 text-xs font-bold bg-pink-500/10 px-2 py-1 rounded">+24%</span>
+                 </div>
+                 <div className="mt-4">
+                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">DIAMONDS</p>
+                   <p className="text-3xl font-black text-white">{stats.gifts.toLocaleString()}</p>
+                 </div>
+              </div>
+              
+              <div className="bg-[#151923] border border-[#252A36] p-6 rounded-2xl flex flex-col justify-between min-h-[140px]">
+                 <div className="flex justify-between items-start">
+                   <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center text-violet-400">
+                     <UserPlus size={20} />
+                   </div>
+                   <span className="text-gray-400 text-xs font-bold bg-white/5 px-2 py-1 rounded">Stable</span>
+                 </div>
+                 <div className="mt-4">
+                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">FOLLOWERS</p>
+                   <p className="text-3xl font-black text-white">{stats.follows.toLocaleString()}</p>
+                 </div>
+              </div>
+
+              <div className="bg-[#151923] border border-[#252A36] p-6 rounded-2xl flex flex-col justify-between min-h-[140px]">
+                 <div className="flex justify-between items-start">
+                   <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400">
+                     <Heart size={20} />
+                   </div>
+                   <span className="text-red-400 text-xs font-bold bg-red-500/10 px-2 py-1 rounded">-3%</span>
+                 </div>
+                 <div className="mt-4">
+                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">ENGAGEMENT</p>
+                   <p className="text-3xl font-black text-white">92.4%</p>
+                 </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6 bg-[#11141C] p-6 rounded-[24px] border border-[#252A36]">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xl font-black tracking-tighter text-white">Recent Activity</h3>
+                  <button className="text-xs font-bold text-cyan-400 hover:text-cyan-300">View All History</button>
+                </div>
+                
+                <div className="space-y-3 max-h-[400px] overflow-y-auto no-scrollbar">
+                  {events.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <p className="text-sm text-gray-500 font-medium">No recent activity</p>
+                    </div>
+                  ) : (
+                    events.slice(0, 10).map((event) => (
+                      <div key={event.id} className="flex items-center justify-between p-4 bg-[#151923] border border-[#252A36] rounded-xl hover:bg-[#1A1E29] transition-colors">
+                        <div className="flex items-center gap-4">
+                          <img src={event.profilePictureUrl || `https://ui-avatars.com/api/?name=${event.nickname}&background=random`} alt={event.nickname} className="w-10 h-10 rounded-lg" referrerPolicy="no-referrer" />
+                          <div>
+                            <p className="text-sm text-gray-300">
+                              <span className="font-bold text-white mr-1">{event.nickname}</span>
+                              {event.type === 'gift' && `sent a ${event.giftName}`}
+                              {event.type === 'social' && event.label}
+                              {event.type === 'like' && `sent ${event.repeatCount} likes`}
+                            </p>
+                            <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mt-1">
+                              {dayjs(event.timestamp).fromNow()}
+                            </p>
                           </div>
-                        ) : (
-                          events.slice(0, 50).map((event) => (
-                            <div key={event.id} className="flex items-center gap-4 p-4 border-b border-white/5 hover:bg-white/5 transition-colors group">
-                              <img src={event.profilePictureUrl} alt={event.nickname} className="w-10 h-10 rounded-lg border border-white/10" referrerPolicy="no-referrer" />
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-bold text-white">{event.nickname}</span>
-                                  <span className="text-[10px] text-gray-500 font-mono">{dayjs(event.timestamp).format('HH:mm:ss')}</span>
-                                </div>
-                                <p className="text-xs text-gray-400 mt-0.5">
-                                  {event.type === 'chat' && event.comment}
-                                  {event.type === 'gift' && `Sent ${event.giftName} x${event.repeatCount} (${event.diamondCount} diamonds)`}
-                                  {event.type === 'social' && event.label}
-                                  {event.type === 'like' && `Sent ${event.repeatCount} likes`}
-                                </p>
-                              </div>
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button className="p-2 text-gray-500 hover:text-cyan-500"><MoreHorizontal size={16} /></button>
-                              </div>
-                            </div>
-                          ))
+                        </div>
+                        {event.type === 'gift' && (
+                          <div className="font-black text-cyan-400">
+                            +{event.diamondCount} Diamonds
+                          </div>
+                        )}
+                        {event.type === 'social' && (
+                           <div className="font-bold text-xs px-3 py-1 bg-white/5 rounded-full text-gray-300 border border-white/10">
+                              Welcome
+                           </div>
                         )}
                       </div>
-                    </div>
-                  </Section>
+                    ))
+                  )}
                 </div>
+              </div>
 
-                <div className="space-y-6">
-                  <Section title="Event Simulator" description="Test your alerts and triggers">
-                    <div className="bg-[#111317] border border-white/5 rounded-xl p-6 space-y-4">
-                      <div className="grid grid-cols-2 gap-3">
-                        <SimButton label="Follow" onClick={() => handleTikTokEvent({ nickname: 'SimUser', type: 'social', displayType: 'follow', timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/1/100/100' })} />
-                        <SimButton label="Share" onClick={() => handleTikTokEvent({ nickname: 'SimUser', type: 'social', displayType: 'share', timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/2/100/100' })} />
-                        <SimButton label="Subscribe" onClick={() => handleTikTokEvent({ nickname: 'SimUser', type: 'social', displayType: 'subscribe', timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/3/100/100' })} />
-                        <SimButton label="15 Likes" onClick={() => handleTikTokEvent({ nickname: 'SimUser', type: 'like', likeCount: 15, timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/4/100/100' })} />
+              <div className="space-y-6">
+                <div className="bg-[#11141C] border border-[#252A36] rounded-3xl p-6 relative overflow-hidden">
+                   <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-pink-500/20 blur-3xl rounded-full"></div>
+                   <h3 className="text-xl font-black tracking-tighter text-white mb-1">Current Goal</h3>
+                   <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-6">SUBATHON - LEVEL 2 UNLOCKED</p>
+                   
+                   <div className="space-y-2 mb-8">
+                     <div className="flex justify-between text-xs font-bold text-white tracking-wide">
+                       <span>NEW SUBSCRIBERS</span>
+                       <span>{followerGoal.current} / {followerGoal.target}</span>
+                     </div>
+                     <div className="h-2 bg-[#1A1E29] rounded-full overflow-hidden">
+                       <div className="h-full bg-cyan-400" style={{ width: `${Math.min(100, (followerGoal.current / followerGoal.target) * 100)}%` }} />
+                     </div>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-4 mb-6">
+                      <div className="bg-[#151923] border border-[#252A36] rounded-xl p-4">
+                        <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest mb-1">TIME LEFT</p>
+                        <p className="text-xl font-bold text-white">02:14:45</p>
                       </div>
-                      <div className="h-[1px] bg-white/5" />
-                      <div className="space-y-3">
-                        <select className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2.5 text-xs font-bold focus:border-cyan-500/50 outline-none">
-                          <option>Select gift...</option>
-                          <option>Rose</option>
-                          <option>Finger Heart</option>
-                          <option>Diamond</option>
-                        </select>
-                        <button className="w-full bg-cyan-500 text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-cyan-600 transition-colors">
-                          Simulate Gift
-                        </button>
+                      <div className="bg-pink-500/10 border border-pink-500/20 rounded-xl p-4 flex items-center justify-between">
+                         <div>
+                            <p className="text-[9px] font-black uppercase text-pink-400 tracking-widest mb-1">REWARD</p>
+                            <p className="text-sm font-bold text-pink-100 leading-tight">Cosplay<br/>Stream</p>
+                         </div>
+                         <div className="w-8 h-8 rounded-full bg-pink-500 flex items-center justify-center">
+                            <Zap size={14} className="text-white fill-white"/>
+                         </div>
                       </div>
-                    </div>
-                  </Section>
+                   </div>
 
-                  <Section title="Quick Stats" description="Session performance">
-                    <div className="bg-[#111317] border border-white/5 rounded-xl p-6 space-y-6">
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-gray-500">
-                          <span>Follower Goal</span>
-                          <span>{followerGoal.current} / {followerGoal.target}</span>
-                        </div>
-                        <div className="h-2 bg-black/40 rounded-full overflow-hidden">
-                          <div className="h-full bg-cyan-500" style={{ width: `${(followerGoal.current / followerGoal.target) * 100}%` }} />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-gray-500">
-                          <span>Gift Goal</span>
-                          <span>{giftGoal.current} / {giftGoal.target}</span>
-                        </div>
-                        <div className="h-2 bg-black/40 rounded-full overflow-hidden">
-                          <div className="h-full bg-violet-500" style={{ width: `${(giftGoal.current / giftGoal.target) * 100}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                  </Section>
+                   <button className="w-full py-4 rounded-xl border border-[#252A36] font-bold text-xs uppercase tracking-widest text-gray-300 hover:bg-[#1A1E29] transition-all">
+                     BOOST GOAL WITH ADS
+                   </button>
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
           {activeTab === 'actions' && (
-            <div className="space-y-8">
-              <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-3xl font-black tracking-tighter text-white">Actions</h2>
-                  <p className="text-sm text-gray-500">Define what happens when an event is triggered</p>
-                </div>
-                <button 
-                  onClick={() => setActions([...actions, { 
-                    id: Math.random().toString(36).substr(2, 9), 
-                    name: 'New Action', 
-                    type: 'alert', 
-                    screen: 'Screen 1',
-                    duration: 5,
-                    animation: 'fade',
-                    imageUrl: '',
-                    soundUrl: '',
-                    videoUrl: '',
-                    description: 'Custom action',
-                    textColor: '#ec4899',
-                    fontSize: '36',
-                    ttsEnabled: true,
-                    ttsTemplate: '{nickname} triggered an action!',
-                    ttsVoice: ''
-                  }])}
-                  className="bg-cyan-500 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-cyan-600 transition-colors"
-                >
-                  <Plus size={18} />
-                  Create Action
-                </button>
-              </header>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {actions.map((action) => (
-                  <div key={action.id} className="bg-[#111317] border border-white/5 rounded-2xl p-6 space-y-4 group hover:border-cyan-500/30 transition-all">
-                    <div className="flex justify-between items-start">
-                      <div className="w-12 h-12 bg-cyan-500/10 rounded-xl flex items-center justify-center text-cyan-500">
-                        {action.type === 'alert' ? <Bell size={24} /> : action.type === 'tts' ? <Mic size={24} /> : <Zap size={24} />}
-                      </div>
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => {
-                            const newAction = {
-                              ...action,
-                              id: Math.random().toString(36).substr(2, 9),
-                              name: `${action.name} (Copy)`
-                            };
-                            setActions([...actions, newAction]);
-                          }}
-                          className="p-2 text-gray-500 hover:text-cyan-500"
-                          title="Duplicate"
-                        >
-                          <Copy size={16} />
-                        </button>
-                        <button 
-                          onClick={() => setEditingAction(action)}
-                          className="p-2 text-gray-500 hover:text-white"
-                          title="Edit"
-                        >
-                          <Edit3 size={16} />
-                        </button>
-                        <button 
-                          onClick={() => setActions(actions.filter(a => a.id !== action.id))}
-                          className="p-2 text-gray-500 hover:text-red-500"
-                          title="Delete"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="text-lg font-bold text-white">{action.name}</h4>
-                      <p className="text-xs text-gray-500 uppercase font-black tracking-widest mt-1">{action.type}</p>
-                    </div>
-                    <div className="pt-4 border-t border-white/5 flex items-center justify-between text-[10px] font-bold text-gray-400">
-                      <span>{action.animation || 'No Animation'}</span>
-                      <span>{action.duration}s Duration</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'events' && (
-            <div className="space-y-8">
-              <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-3xl font-black tracking-tighter text-white">Event Triggers</h2>
-                  <p className="text-sm text-gray-500">Link TikTok events to your defined actions</p>
-                </div>
-                <button 
-                  onClick={() => {
-                    const newTrigger: TikTokEventTrigger = {
-                      id: Math.random().toString(36).substr(2, 9),
-                      active: true,
-                      user: 'Any',
-                      triggerType: 'Gift',
-                      triggerValue: '',
-                      actionIds: []
-                    };
-                    setEditingTrigger(newTrigger);
-                  }}
-                  className="bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-emerald-600 transition-colors"
-                >
-                  <Plus size={18} />
-                  Add Trigger
-                </button>
-              </header>
-
-              <div className="bg-[#111317] border border-white/5 rounded-2xl overflow-hidden">
-                {/* Desktop Table View */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-white/[0.02] border-b border-white/5">
-                        <th className="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Event Type</th>
-                        <th className="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Condition</th>
-                        <th className="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Linked Actions</th>
-                        <th className="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500">Status</th>
-                        <th className="p-6 text-[10px] font-black uppercase tracking-widest text-gray-500"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                      {eventTriggers.map((trigger) => (
-                        <tr key={trigger.id} className="hover:bg-white/[0.01] transition-colors">
-                          <td className="p-6">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center text-gray-400">
-                                {trigger.triggerType === 'Gift' ? <Gift size={16} /> : trigger.triggerType === 'Follow' ? <UserPlus size={16} /> : <Zap size={16} />}
-                              </div>
-                              <span className="text-sm font-bold text-white capitalize">{trigger.triggerType}</span>
-                            </div>
-                          </td>
-                          <td className="p-6 text-sm text-gray-400 font-medium">
-                            <div className="flex flex-col gap-1">
-                              <span>{trigger.triggerValue ? `${trigger.triggerType}: ${trigger.triggerValue}` : `Any ${trigger.triggerType}`}</span>
-                              {trigger.minCount && (
-                                <span className="text-[10px] text-cyan-500 font-black uppercase tracking-widest">
-                                  {trigger.isStreak ? `Streak: ${trigger.minCount}+` : `Min: ${trigger.minCount}`}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-6">
-                            <div className="flex flex-wrap gap-2">
-                              {trigger.actionIds.map(id => (
-                                <span key={id} className="px-3 py-1 bg-cyan-500/10 text-cyan-500 rounded-full text-[10px] font-black uppercase tracking-widest border border-cyan-500/20">
-                                  {actions.find(a => a.id === id)?.name || 'Unknown'}
-                                </span>
-                              ))}
-                              {trigger.actionIds.length === 0 && <span className="text-xs text-gray-600 italic">No actions linked</span>}
-                            </div>
-                          </td>
-                          <td className="p-6">
-                            <div className="flex items-center gap-2">
-                              <div className={`w-2 h-2 rounded-full ${trigger.active ? 'bg-emerald-500' : 'bg-gray-600'}`} />
-                              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                                {trigger.active ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="p-6 text-right">
-                            <button 
-                              onClick={() => setEditingTrigger(trigger)}
-                              className="text-gray-600 hover:text-white transition-colors"
-                            >
-                              <Edit3 size={18} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Card View */}
-                <div className="md:hidden divide-y divide-white/5">
-                  {eventTriggers.map((trigger) => (
-                    <div key={trigger.id} className="p-6 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center text-gray-400">
-                            {trigger.triggerType === 'Gift' ? <Gift size={16} /> : trigger.triggerType === 'Follow' ? <UserPlus size={16} /> : <Zap size={16} />}
-                          </div>
-                          <span className="text-sm font-bold text-white capitalize">{trigger.triggerType}</span>
-                        </div>
-                        <button 
-                          onClick={() => setEditingTrigger(trigger)}
-                          className="text-gray-600 hover:text-white transition-colors"
-                        >
-                          <Edit3 size={18} />
-                        </button>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <p className="text-xs text-gray-500 uppercase font-black tracking-widest">Condition</p>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-300">{trigger.triggerValue ? `${trigger.triggerType}: ${trigger.triggerValue}` : `Any ${trigger.triggerType}`}</span>
-                          {trigger.minCount && (
-                            <span className="text-[10px] text-cyan-500 font-black uppercase tracking-widest">
-                              {trigger.isStreak ? `Streak: ${trigger.minCount}+` : `Min: ${trigger.minCount}`}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <p className="text-xs text-gray-500 uppercase font-black tracking-widest">Linked Actions</p>
-                        <div className="flex flex-wrap gap-2">
-                          {trigger.actionIds.map(id => (
-                            <span key={id} className="px-3 py-1 bg-cyan-500/10 text-cyan-500 rounded-full text-[10px] font-black uppercase tracking-widest border border-cyan-500/20">
-                              {actions.find(a => a.id === id)?.name || 'Unknown'}
-                            </span>
-                          ))}
-                          {trigger.actionIds.length === 0 && <span className="text-xs text-gray-600 italic">No actions linked</span>}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${trigger.active ? 'bg-emerald-500' : 'bg-gray-600'}`} />
-                          <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                            {trigger.active ? 'Active' : 'Inactive'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <ActionsAndEvents 
+              actions={actions} 
+              setActions={setActions} 
+              setEditingAction={setEditingAction} 
+              eventTriggers={eventTriggers} 
+              setEventTriggers={setEventTriggers} 
+              setEditingTrigger={setEditingTrigger} 
+              timers={timers} 
+              setTimers={setTimers} 
+              handleTikTokEvent={handleTikTokEvent} 
+            />
           )}
 
           {activeTab === 'overlay' && (
@@ -3817,7 +3648,6 @@ export default function App() {
               </footer>
             </div>
           )}
-        </div>
       </main>
 
       <AnimatePresence>
@@ -4020,6 +3850,18 @@ export default function App() {
                       <option value="sound">Sound Only</option>
                       <option value="animation">Animation Only</option>
                       <option value="tts">TTS Only</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Screen</label>
+                    <select 
+                      value={editingAction.screen}
+                      onChange={(e) => setEditingAction({...editingAction, screen: e.target.value})}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors appearance-none"
+                    >
+                      {Array.from({length: 8}, (_, i) => i + 1).map(n => (
+                        <option key={n} value={`Screen ${n}`}>Screen {n}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -4267,21 +4109,23 @@ function SidebarItem({ icon, active, onClick, label, badge }: { icon: ReactNode,
   return (
     <button
       onClick={onClick}
-      className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all group relative ${
+      className={`w-full h-12 rounded-r-lg flex items-center gap-4 px-4 transition-all relative ${
         active 
-          ? 'bg-pink-500 text-white shadow-lg shadow-pink-500/20' 
-          : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+          ? 'bg-gradient-to-r from-[#172436] to-transparent border-l-[3px] border-cyan-400 text-cyan-400' 
+          : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border-l-[3px] border-transparent'
       }`}
     >
-      {icon}
+      <div className="flex items-center justify-center w-5 h-5 opacity-90">
+        {icon}
+      </div>
+      <span className={`text-sm font-semibold tracking-wide ${active ? 'text-white' : ''}`}>
+        {label}
+      </span>
       {badge && (
-        <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[8px] font-black px-1 py-0.5 rounded-full border border-[#111317]">
+        <span className="ml-auto bg-cyan-500/20 text-cyan-400 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
           {badge}
         </span>
       )}
-      <span className="absolute left-16 bg-gray-900 text-white text-[10px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 uppercase tracking-tighter border border-gray-800">
-        {label}
-      </span>
     </button>
   );
 }
@@ -4463,17 +4307,7 @@ function SettingsSection({ title, children }: { title: string, children: ReactNo
   );
 }
 
-function Section({ title, description, children }: { title: string, description: string, children: ReactNode }) {
-  return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-xl font-black tracking-tighter text-white">{title}</h3>
-        <p className="text-xs text-gray-500 font-medium">{description}</p>
-      </div>
-      {children}
-    </div>
-  );
-}
+
 
 function SimButton({ label, onClick }: { label: string, onClick: () => void }) {
   return (

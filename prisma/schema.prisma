@@ -48,5 +48,7 @@ model Settings {
   overlayPresets      Json     @default("[]")
   beybladeLeaderboard Json     @default("[]")
   pixelConquest       Json     @default("{}")
+  events              Json     @default("[]")
+  timers              Json     @default("[]")
   updatedAt           DateTime @default(now()) @updatedAt
 }

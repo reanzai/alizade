@@ -77,30 +77,90 @@ Projeye eklenen ve güncellenen temel özellikler:
     *   İzleyicilerin gönderdiği hediyelere veya yorumlara göre oyunları (Beyblade, Pixel Conquest vb.) tetikler ve günceller.
 6.  **OBS Entegrasyonu:** Kullanıcılar, "Overlay" modunu kullanarak kendilerine özel oluşturulan URL'yi OBS (Open Broadcaster Software) gibi yayın programlarına "Tarayıcı Kaynağı" (Browser Source) olarak ekler ve grafikleri doğrudan yayın ekranına yansıtır.
 
-## 🌐 VDS ve Domain ile Yayına Alma (Public Making)
+## 🌐 VDS Sunucuya Kurulum ve Domaine Bağlama (Canlıya Alma Rehberi)
 
-Uygulamanızı bir sunucuya (VDS) kurup kendi domain adresiniz üzerinden yayına açmak için aşağıdaki adımları takip edebilirsiniz. Detaylı teknik rehber için **[VDS_SETUP.md](./VDS_SETUP.md)** dosyasına göz atın.
+Uygulamanızı kendi VDS (Sanal Sunucu) ortamınızda kurup, kendi alan adınız (domain) ile dünyaya açık (public) hale getirmek için **Ubuntu** sunucunuzda aşağıdaki adımları sırasıyla uygulayın.
 
-### 1. Sunucu Hazırlığı
-*   Ubuntu tabanlı bir VDS edinin.
-*   Node.js, PostgreSQL, Nginx ve PM2 kurulumlarını yapın.
+### 1. Sunucu Gereksinimlerinin Kurulması (Node.js, PM2, Nginx, PostgreSQL)
+Sunucunuza SSH ile bağlanıp temel paketleri kurun:
+```bash
+sudo apt update && sudo apt upgrade -y
+# Node.js Kurulumu
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+# PM2 Kurulumu (Uygulamayı arkaplanda açık tutmak için)
+sudo npm install -g pm2
+# Nginx ve PostgreSQL Kurulumu
+sudo apt install nginx postgresql postgresql-contrib -y
+```
 
-### 2. Uygulama ve Veritabanı
-*   Proje dosyalarını sunucuya yükleyin ve `npm install` ile bağımlılıkları kurun.
-*   PostgreSQL veritabanınızı oluşturun ve `.env` dosyasındaki `DATABASE_URL` değişkenini güncelleyin.
-*   `npx prisma generate` ve `npx prisma migrate deploy` komutları ile veritabanı şemasını sunucuda oluşturun.
+### 2. Sitenizi Nereye Kuracağınızı Seçin
+Dosyaları sunucunuza aktarın. Örnek klasör yolu olarak `/var/www/tikgifty` kullanacağız.
+Projeyi zip ile veya git ile bu klasöre çekin.
 
-### 3. Derleme ve Başlatma (PM2)
-*   Uygulamayı derleyin: `npm run build` (Bu işlem hem React frontend'ini `dist/` klasörüne çıkarır hem de backend `server.ts` dosyasını `dist/server.js` olarak hazırlar).
-*   Uygulamayı PM2 ile arka planda başlatın: 
-    ```bash
-    pm2 start dist/server.js --name tikgifty-backend
-    ```
+### 3. Veritabanı ve Çevre Değişkenleri Ayarı (.env)
+```bash
+sudo -u postgres psql
+CREATE DATABASE tikgifty;
+CREATE USER tikgifty_user WITH ENCRYPTED PASSWORD 'sifre_buraya';
+GRANT ALL PRIVILEGES ON DATABASE tikgifty TO tikgifty_user;
+\q
+```
+Proje dizininde ( `/var/www/tikgifty` ) `.env` dosyası oluşturun:
+```env
+DATABASE_URL="postgresql://tikgifty_user:sifre_buraya@localhost:5432/tikgifty"
+PORT=3000
+```
+Daha sonra tabloları oluşturun:
+```bash
+npx prisma generate
+npx prisma migrate deploy
+```
 
-### 4. Domain ve Nginx Konfigürasyonu
-*   Domain adresinizin A kaydını sunucunuzun IP adresine yönlendirin.
-*   Nginx üzerinden bir `server` bloğu oluşturarak 80 portuna gelen istekleri `dist/` klasörüne veya API isteklerini sunucunun 3000 portuna yönlendirin (Ters Vekil - Reverse Proxy).
-*   SSL (HTTPS) için Certbot (Let's Encrypt) kullanarak güvenli bağlantı kurun.
+### 4. Projeyi Derleme ve Başlatma
+Proje dizinindeyken tüm paketleri güncelleyip oluşturduğunuz kodları canlıya derleyin ve başlatın:
+```bash
+npm install
+npm run build
+pm2 start dist/server.js --name tikgifty-backend
+pm2 save
+pm2 startup
+```
+
+### 5. Domain Yönlendirmesi (DNS) Ayarları
+Domain aldığınız firmadan (Godaddy, Cloudflare vb.) DNS yönetim panelinize girip, **Type: A Record** seçerek **`Name: @`** ve **`Name: www`** değerlerini karşısına **VDS Sunucunuzun IP Adresini** yazarak kaydedin.
+
+### 6. Nginx Ayarı (Gelen Ziyaretçileri Siteye Bağla)
+`sudo nano /etc/nginx/sites-available/tikgifty` yazıp aşağıdaki ayarları girin (alan adınızı düzeltin):
+```nginx
+server {
+    listen 80;
+    server_name senindomainin.com www.senindomainin.com;
+
+    root /var/www/tikgifty/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API ve WebSocket İsteklerini Arka Plana İlet
+    location /api/ { proxy_pass http://localhost:3000; }
+    location /socket.io/ {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+Ayarı kaydedip Nginx'i yeniden başlatın:
+```bash
+sudo ln -s /etc/nginx/sites-available/tikgifty /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+Artık domain adresinize girdiğinizde TikGifty (kendi projeniz) çalışacaktır! SSL sertifikası yüklemek için `certbot` kurabilirsiniz.
 
 ## 🛠 Kurulum ve Çalıştırma
 
