@@ -1,4 +1,6 @@
-import { PrismaClient, Wallet, Prisma } from '@prisma/client';
+import type { Wallet } from '@prisma/client';
+import pkg from '@prisma/client';
+const { PrismaClient, Prisma } = pkg;
 
 const prisma = new PrismaClient();
 

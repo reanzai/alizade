@@ -38,7 +38,7 @@ export function ActionsAndEvents({
   return (
     <div className="space-y-8">
       <header className="flex flex-col gap-2">
-        <h2 className="text-3xl font-black tracking-tighter text-white">Eylemler ve Etkinlikler</h2>
+        <h2 className="text-3xl font-black tracking-tighter text-white">TikTok Hediye Etkileşim</h2>
         <p className="text-sm text-gray-500">
           Burada özel eylemlerinizi ve olaylarınızı tanımlayabilirsiniz. İlk olarak bir Eylem oluşturun, 
           daha sonra bu Eylemi bir Olaya veya Zamanlayıcıya bağlayın. OBS/LIVE Studio için Eylemlerim Kaplaması gereklidir.

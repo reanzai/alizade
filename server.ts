@@ -11,7 +11,8 @@ import { fileURLToPath } from "url";
 import cors from "cors";
 import fs from "fs";
 
-import { PrismaClient } from "@prisma/client";
+import pkg from '@prisma/client';
+const { PrismaClient } = pkg;
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -139,7 +140,7 @@ async function startServer() {
   // --- Auth Routes ---
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, displayName } = req.body;
+      const { email, password, displayName, firstName, lastName, tiktokUsername, phoneCountryCode, phone, referredBy } = req.body;
       
       // Basic Input Validation
       if (!email || typeof email !== 'string' || email.length > 100 || !/^\S+@\S+\.\S+$/.test(email)) {
@@ -160,7 +161,13 @@ async function startServer() {
         data: {
           email: email.toLowerCase(),
           password: hashedPassword,
-          displayName
+          displayName,
+          firstName,
+          lastName,
+          tiktokUsername,
+          phoneCountryCode,
+          phone,
+          referredBy
         }
       });
       
@@ -169,7 +176,7 @@ async function startServer() {
       });
 
       const token = jwt.sign({ id: user.id, email: user.email, plan: user.plan }, JWT_SECRET, { expiresIn: '7d' });
-      res.json({ token, user: { id: user.id, email: user.email, displayName: user.displayName, plan: user.plan } });
+      res.json({ token, user: { id: user.id, email: user.email, displayName: user.displayName, firstName: user.firstName, plan: user.plan } });
     } catch (err: any) {
       res.status(500).json({ error: "Registration failed" });
     }

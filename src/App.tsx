@@ -61,7 +61,10 @@ import {
   Map as MapIcon,
   Menu,
   Users,
-  AlertTriangle
+  AlertTriangle,
+  Send,
+  ShoppingCart,
+  Youtube
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Helmet } from 'react-helmet-async';
@@ -93,6 +96,7 @@ import {
 import { PixelConquestDashboard, PixelConquestOverlay, PixelConquestState } from './components/PixelConquest';
 import { VotingGameDashboard, VotingGameOverlay, VotingGameState } from './components/VotingGame';
 import { ActionsAndEvents } from './components/ActionsAndEvents';
+import { TurkeyMapDashboard, TurkeyMapOverlay, TurkeyMapGameState } from './components/TurkeyMapWar';
 import { Section } from './components/Section';
 
 // --- Types ---
@@ -401,7 +405,18 @@ export default function App() {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [authForm, setAuthForm] = useState({ email: '', password: '', displayName: '' });
+  const [authForm, setAuthForm] = useState({ 
+    firstName: '',
+    lastName: '',
+    tiktokUsername: '',
+    email: '', 
+    phoneCountryCode: 'TR +90',
+    phone: '',
+    password: '', 
+    passwordConfirm: '',
+    referredBy: '',
+    displayName: '' 
+  });
 
   // Beyblade Game State
   const [beybladeGame, setBeybladeGame] = useState<BeybladeGame>({
@@ -448,6 +463,23 @@ export default function App() {
     userTeams: {}
   });
 
+  const [turkeyMapGame, setTurkeyMapGame] = useState<TurkeyMapGameState>({
+    status: 'idle',
+    teams: [
+      { id: '1', name: 'Kırmızı Ordu', color: '#ef4444', giftName: 'Rose', capitalId: 34, score: 0 },
+      { id: '2', name: 'Mavi Ordu', color: '#3b82f6', giftName: 'TikTok', capitalId: 6, score: 0 },
+      { id: '3', name: 'Yeşil Birlik', color: '#10b981', giftName: 'GG', capitalId: 35, score: 0 },
+      { id: '4', name: 'Sarı Birlik', color: '#eab308', giftName: 'Heart', capitalId: 1, score: 0 }
+    ],
+    cities: {},
+    settings: {
+      title: 'TÜRKİYE HÜKÜMDARLIK SAVAŞI',
+      description: 'Hediye atarak takımının sınırlarını genişlet!',
+      maxHealthPerCity: 1,
+      attackPowerPerGift: 1
+    }
+  });
+
   // Word Game State
   const [game, setGame] = useState<WordGame>({
     currentWord: '',
@@ -469,6 +501,7 @@ export default function App() {
   const beybladeGameRef = useRef(beybladeGame);
   const votingGameRef = useRef(votingGame);
   const pixelConquestRef = useRef(pixelConquest);
+  const turkeyMapGameRef = useRef(turkeyMapGame);
   const usernameRef = useRef(username);
 
   useEffect(() => {
@@ -1486,6 +1519,7 @@ export default function App() {
         newSocket.emit('sync-state', { username: currentUsername, state: { type: 'wordGame', data: gameRef.current } });
         newSocket.emit('sync-state', { username: currentUsername, state: { type: 'beybladeGame', data: beybladeGameRef.current } });
         newSocket.emit('sync-state', { username: currentUsername, state: { type: 'pixelConquest', data: pixelConquestRef.current } });
+        newSocket.emit('sync-state', { username: currentUsername, state: { type: 'turkeyMapGame', data: turkeyMapGameRef.current } });
       }
     });
 
@@ -1494,6 +1528,7 @@ export default function App() {
       if (stateObj.type === 'wordGame') setGame(stateObj.data);
       if (stateObj.type === 'beybladeGame') setBeybladeGame(stateObj.data);
       if (stateObj.type === 'pixelConquest') setPixelConquest(stateObj.data);
+      if (stateObj.type === 'turkeyMapGame') setTurkeyMapGame(stateObj.data);
     });
 
     newSocket.on('tiktok-connected', (data) => {
@@ -1588,6 +1623,49 @@ export default function App() {
         }, 500);
       }
 
+      
+      // Turkey Map War Logic
+      setTurkeyMapGame(prev => {
+        if (prev.status !== 'running') return prev;
+        
+        const matchedTeam = prev.teams.find(t => t.giftName.toLowerCase() === data.giftName?.toLowerCase());
+        if (!matchedTeam) return prev;
+
+        const newCities = { ...prev.cities };
+        let newTeams = [...prev.teams];
+        
+        const unownedCities = Object.values(newCities).filter(c => c.ownerId === null);
+        let targetCity = null;
+        
+        if (unownedCities.length > 0) {
+          targetCity = unownedCities[Math.floor(Math.random() * unownedCities.length)];
+        } else {
+          const enemyCities = Object.values(newCities).filter(c => c.ownerId !== matchedTeam.id);
+          if (enemyCities.length > 0) {
+            targetCity = enemyCities[Math.floor(Math.random() * enemyCities.length)];
+          }
+        }
+
+        if (targetCity) {
+          const actualTarget = { ...targetCity };
+          actualTarget.health -= prev.settings.attackPowerPerGift * (data.repeatCount || 1);
+          if (actualTarget.health <= 0) {
+            const oldOwnerId = actualTarget.ownerId;
+            actualTarget.ownerId = matchedTeam.id;
+            actualTarget.health = prev.settings.maxHealthPerCity;
+            
+            newTeams = newTeams.map(t => {
+              if (t.id === matchedTeam.id) return { ...t, score: t.score + 1 };
+              if (t.id === oldOwnerId) return { ...t, score: Math.max(0, t.score - 1) };
+              return t;
+            });
+          }
+          newCities[actualTarget.plateNumber] = actualTarget;
+        }
+
+        return { ...prev, cities: newCities, teams: newTeams };
+      });
+
       // Voting Game Logic
       setVotingGame(prev => {
         if (prev.status !== 'running') return prev;
@@ -1627,9 +1705,52 @@ export default function App() {
       updateUserStats(data, 'gift');
       
       // Trigger Alert if it's the first gift in a streak or a single gift
+
       if (data.repeatCount === 1 || !data.repeatCount) {
         handleTikTokEvent({ ...data, type: 'gift' });
       }
+
+      // Turkey Map War Logic
+      setTurkeyMapGame(prev => {
+        if (prev.status !== 'running') return prev;
+        
+        const matchedTeam = prev.teams.find(t => t.giftName.toLowerCase() === data.giftName?.toLowerCase());
+        if (!matchedTeam) return prev;
+
+        const newCities = { ...prev.cities };
+        let newTeams = [...prev.teams];
+        
+        const unownedCities = Object.values(newCities).filter(c => c.ownerId === null);
+        let targetCity = null;
+        
+        if (unownedCities.length > 0) {
+          targetCity = unownedCities[Math.floor(Math.random() * unownedCities.length)];
+        } else {
+          const enemyCities = Object.values(newCities).filter(c => c.ownerId !== matchedTeam.id);
+          if (enemyCities.length > 0) {
+            targetCity = enemyCities[Math.floor(Math.random() * enemyCities.length)];
+          }
+        }
+
+        if (targetCity) {
+          const actualTarget = { ...targetCity };
+          actualTarget.health -= prev.settings.attackPowerPerGift * (data.repeatCount || 1);
+          if (actualTarget.health <= 0) {
+            const oldOwnerId = actualTarget.ownerId;
+            actualTarget.ownerId = matchedTeam.id;
+            actualTarget.health = prev.settings.maxHealthPerCity;
+            
+            newTeams = newTeams.map(t => {
+              if (t.id === matchedTeam.id) return { ...t, score: t.score + 1 };
+              if (t.id === oldOwnerId) return { ...t, score: Math.max(0, t.score - 1) };
+              return t;
+            });
+          }
+          newCities[actualTarget.plateNumber] = actualTarget;
+        }
+
+        return { ...prev, cities: newCities, teams: newTeams };
+      });
 
       // Voting Game Logic
       setVotingGame(prev => {
@@ -1774,13 +1895,18 @@ export default function App() {
     }
   };
 
-  const handleRegister = async (email: string, password: string, displayName: string) => {
+  const handleRegister = async (formData: any) => {
+    if (formData.password !== formData.passwordConfirm) {
+      alert("Şifreler uyuşmuyor!");
+      return;
+    }
+    
     if (IS_SELF_HOSTED) {
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, displayName })
+          body: JSON.stringify(formData)
         });
         
         const contentType = res.headers.get("content-type");
@@ -1793,7 +1919,7 @@ export default function App() {
         if (data.token) {
           localStorage.setItem('tikgifty_token', data.token);
           setAuthToken(data.token);
-          setUser({ uid: data.user.id, email: data.user.email, displayName: data.user.displayName });
+          setUser({ uid: data.user.id, email: data.user.email, displayName: data.user.displayName || data.user.firstName });
           setUserProfile({ isSubscribed: false, role: 'user' });
         } else {
           alert(data.error || "Registration failed");
@@ -2038,16 +2164,37 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="w-full max-w-md bg-[#111317] border border-white/10 rounded-[40px] p-10 relative z-10 shadow-2xl"
+                className="w-full max-w-md bg-[#0F131A] border border-[#252A36] rounded-[24px] relative z-10 shadow-2xl overflow-hidden"
               >
-                <div className="text-center space-y-2 mb-8">
-                  <h3 className="text-3xl font-black tracking-tighter text-white uppercase">
-                    {authMode === 'login' ? 'Welcome Back' : 'Create Account'}
-                  </h3>
-                  <p className="text-gray-500 text-sm">
-                    {authMode === 'login' ? 'Sign in to manage your TikTok stream' : 'Join the community of pro creators'}
-                  </p>
+                {/* Tabs */}
+                <div className="flex border-b border-[#252A36]">
+                  <button 
+                    onClick={() => setAuthMode('login')}
+                    className={`flex-1 py-4 text-xs font-bold tracking-widest uppercase transition-colors ${authMode === 'login' ? 'text-white border-b-2 border-[#8B5CF6]' : 'text-gray-500 hover:text-white'}`}
+                  >
+                    GİRİŞ YAP
+                  </button>
+                  <button 
+                    onClick={() => setAuthMode('register')}
+                    className={`flex-1 py-4 text-xs font-bold tracking-widest uppercase transition-colors ${authMode === 'register' ? 'text-white border-b-2 border-[#8B5CF6]' : 'text-gray-500 hover:text-white'}`}
+                  >
+                    KAYIT OL
+                  </button>
                 </div>
+
+                <div className="p-8">
+                  <div className="text-center space-y-2 mb-8">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 mb-4">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-[10px] font-bold tracking-widest uppercase">CANLI: 10 OYUNCU</span>
+                    </div>
+                    <h3 className="text-2xl font-bold text-white">
+                      {authMode === 'login' ? 'Giriş Yap' : 'Hesap Oluştur'}
+                    </h3>
+                    <p className="text-gray-500 text-sm">
+                      {authMode === 'login' ? 'Tekrar hoş geldiniz.' : 'Savaşlara katılmak için hemen kayıt olun.'}
+                    </p>
+                  </div>
 
                 <form 
                   onSubmit={(e) => {
@@ -2055,65 +2202,205 @@ export default function App() {
                     if (authMode === 'login') {
                       handleLogin(authForm.email, authForm.password);
                     } else {
-                      handleRegister(authForm.email, authForm.password, authForm.displayName);
+                      handleRegister(authForm);
                     }
                     setIsLoginModalOpen(false);
                   }}
                   className="space-y-4"
                 >
                   {authMode === 'register' && (
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-4">Display Name</label>
-                      <input 
-                        type="text"
-                        required
-                        value={authForm.displayName}
-                        onChange={(e) => setAuthForm({ ...authForm, displayName: e.target.value })}
-                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:border-pink-500/50 transition-colors"
-                        placeholder="Your Streamer Name"
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-[#8B5CF6] ml-2">Ad</label>
+                        <div className="relative">
+                          <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                          <input 
+                            type="text"
+                            required
+                            value={authForm.firstName}
+                            onChange={(e) => setAuthForm({ ...authForm, firstName: e.target.value })}
+                            className="w-full bg-[#0A0D14] border border-[#252A36] rounded-xl pl-10 pr-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-[#8B5CF6] transition-colors text-sm"
+                            placeholder="Adınız"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-[#8B5CF6] ml-2">Soyad</label>
+                        <div className="relative">
+                          <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                          <input 
+                            type="text"
+                            required
+                            value={authForm.lastName}
+                            onChange={(e) => setAuthForm({ ...authForm, lastName: e.target.value })}
+                            className="w-full bg-[#0A0D14] border border-[#252A36] rounded-xl pl-10 pr-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-[#8B5CF6] transition-colors text-sm"
+                            placeholder="Soyadınız"
+                          />
+                        </div>
+                      </div>
                     </div>
                   )}
+
+                  {authMode === 'register' && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-[#8B5CF6] ml-2">TikTok Kullanıcı Adı</label>
+                      <div className="relative">
+                        <Music size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                        <input 
+                          type="text"
+                          required
+                          value={authForm.tiktokUsername}
+                          onChange={(e) => setAuthForm({ ...authForm, tiktokUsername: e.target.value })}
+                          className="w-full bg-[#0A0D14] border border-[#252A36] rounded-xl pl-10 pr-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-[#8B5CF6] transition-colors text-sm"
+                          placeholder="@kullaniciadi"
+                        />
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-4">Email Address</label>
-                    <input 
-                      type="email"
-                      required
-                      value={authForm.email}
-                      onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:border-pink-500/50 transition-colors"
-                      placeholder="name@example.com"
-                    />
+                    <label className="text-[10px] font-black uppercase tracking-widest text-[#8B5CF6] ml-2">E-posta Adresi</label>
+                    <div className="relative">
+                      <Mic size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 opacity-0" />
+                      <svg className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      <input 
+                        type="email"
+                        required
+                        value={authForm.email}
+                        onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                        className="w-full bg-[#0A0D14] border border-[#252A36] rounded-xl pl-10 pr-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-[#8B5CF6] transition-colors text-sm"
+                        placeholder="ornek@email.com"
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-4">Password</label>
-                    <input 
-                      type="password"
-                      required
-                      value={authForm.password}
-                      onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white placeholder:text-gray-700 focus:outline-none focus:border-pink-500/50 transition-colors"
-                      placeholder="••••••••"
-                    />
+
+                  {authMode === 'register' && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-[#8B5CF6] ml-2">Telefon Numarası</label>
+                      <div className="flex gap-2">
+                        <select 
+                          value={authForm.phoneCountryCode}
+                          onChange={(e) => setAuthForm({ ...authForm, phoneCountryCode: e.target.value })}
+                          className="w-[110px] bg-[#0A0D14] border border-[#252A36] rounded-xl px-3 py-3 text-white focus:outline-none focus:border-[#8B5CF6] transition-colors text-sm appearance-none"
+                        >
+                          <option value="TR +90">TR +90</option>
+                          <option value="US +1">US +1</option>
+                          <option value="DE +49">DE +49</option>
+                        </select>
+                        <div className="relative flex-1">
+                          <svg className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                          </svg>
+                          <input 
+                            type="tel"
+                            required
+                            value={authForm.phone}
+                            onChange={(e) => setAuthForm({ ...authForm, phone: e.target.value })}
+                            className="w-full bg-[#0A0D14] border border-[#252A36] rounded-xl pl-10 pr-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-[#8B5CF6] transition-colors text-sm"
+                            placeholder="501 234 56 78"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5 relative">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-[#8B5CF6] ml-2">Şifre</label>
+                    <div className="relative">
+                      <Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" />
+                      <input 
+                        type="password"
+                        required
+                        value={authForm.password}
+                        onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                        className="w-full bg-[#0A0D14] border border-[#252A36] rounded-xl pl-10 pr-10 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-[#8B5CF6] transition-colors text-sm tracking-widest"
+                        placeholder="••••••••"
+                      />
+                      <Eye className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4 cursor-pointer hover:text-white" />
+                    </div>
                   </div>
+
+                  {authMode === 'register' && (
+                    <div className="space-y-1.5 relative">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-[#8B5CF6] ml-2">Şifre Tekrar</label>
+                      <div className="relative">
+                        <Shield className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4" />
+                        <input 
+                          type="password"
+                          required
+                          value={authForm.passwordConfirm}
+                          onChange={(e) => setAuthForm({ ...authForm, passwordConfirm: e.target.value })}
+                          className="w-full bg-[#0A0D14] border border-[#252A36] rounded-xl pl-10 pr-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-[#8B5CF6] transition-colors text-sm tracking-widest"
+                          placeholder="••••••••"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {authMode === 'register' && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-[#8B5CF6] ml-2">Referans Kullanıcı Adı (İsteğe Bağlı)</label>
+                      <div className="relative">
+                        <UserPlus size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                        <input 
+                          type="text"
+                          value={authForm.referredBy}
+                          onChange={(e) => setAuthForm({ ...authForm, referredBy: e.target.value })}
+                          className="w-full bg-[#0A0D14] border border-[#252A36] rounded-xl pl-10 pr-4 py-3 text-white placeholder:text-gray-700 focus:outline-none focus:border-[#8B5CF6] transition-colors text-sm"
+                          placeholder="@referanskullaniciadi"
+                        />
+                      </div>
+                      <p className="text-[9px] text-gray-600 leading-tight mt-2 italic px-2">
+                        * Kimin referansı ile geldiyseniz onun TikTok kullanıcı adını yazınız. (Örnek: @valibeyofficial)
+                      </p>
+                    </div>
+                  )}
 
                   <button 
                     type="submit"
-                    className="w-full bg-pink-500 text-white py-5 rounded-2xl font-black text-lg shadow-lg shadow-pink-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all mt-4"
+                    className="w-full bg-[#8B5CF6] text-white py-4 flex items-center justify-center gap-2 rounded-xl font-black text-sm uppercase tracking-widest shadow-lg shadow-[#8B5CF6]/20 hover:bg-[#7C3AED] hover:scale-[1.02] active:scale-[0.98] transition-all mt-6"
                   >
-                    {authMode === 'login' ? 'Sign In' : 'Create Account'}
+                    {authMode === 'login' ? 'Giriş Yap' : 'Kayıt Ol Ve Başla'} <ArrowUpRight size={16} />
                   </button>
                 </form>
 
-                <div className="mt-8 text-center">
+                <div className="mt-8 pt-6 border-t border-[#252A36] flex flex-col items-center">
+                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-4">Topluluk ve Mağaza</p>
+                   <div className="flex gap-2">
+                     <button className="w-10 h-10 bg-[#1A1F2C] border border-[#252A36] rounded-xl flex items-center justify-center text-[#25D366] hover:bg-[#25D366]/10 transition-colors">
+                       <MessageSquare size={18} />
+                     </button>
+                     <button className="w-10 h-10 bg-[#1A1F2C] border border-[#252A36] rounded-xl flex items-center justify-center text-[#5865F2] hover:bg-[#5865F2]/10 transition-colors">
+                       <Users size={18} />
+                     </button>
+                     <button className="w-10 h-10 bg-[#1A1F2C] border border-[#252A36] rounded-xl flex items-center justify-center text-[#0088cc] hover:bg-[#0088cc]/10 transition-colors">
+                       <Send size={18} />
+                     </button>
+                     <button className="w-10 h-10 bg-[#1A1F2C] border border-[#252A36] rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100/10 transition-colors">
+                       <ShoppingCart size={18} />
+                     </button>
+                     <button className="w-10 h-10 bg-[#1A1F2C] border border-[#252A36] rounded-xl flex items-center justify-center text-[#FF0000] hover:bg-[#FF0000]/10 transition-colors">
+                       <Youtube size={18} />
+                     </button>
+                     <button className="w-10 h-10 bg-[#1A1F2C] border border-[#252A36] rounded-xl flex items-center justify-center text-white hover:bg-white/10 transition-colors">
+                       <Music size={18} />
+                     </button>
+                   </div>
+                </div>
+
+                <div className="mt-8 text-center text-xs text-gray-500 font-bold">
                   <button 
                     onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-                    className="text-sm font-bold text-gray-500 hover:text-white transition-colors"
+                    className="hover:text-white transition-colors"
                   >
-                    {authMode === 'login' ? "Don't have an account? Register" : "Already have an account? Sign In"}
+                    {authMode === 'login' ? "Hesabınız yok mu? Kayıt Olun" : "Zaten hesabınız var mı? Giriş Yapın"}
                   </button>
                 </div>
+                </div>
               </motion.div>
+
             </div>
           )}
         </AnimatePresence>
@@ -2126,9 +2413,15 @@ export default function App() {
       return <PixelConquestOverlay state={pixelConquest} events={events} />;
     }
     
+
     if (gameOverlayMode === 'voting') {
       return <VotingGameOverlay gameState={votingGame} />;
     }
+    
+    if (gameOverlayMode === 'turkey-map') {
+      return <TurkeyMapOverlay gameState={turkeyMapGame} />;
+    }
+
 
     return (
       <div className="fixed inset-0 pointer-events-none overflow-hidden flex flex-col items-center justify-center p-12">
@@ -2342,7 +2635,7 @@ export default function App() {
               icon={<Zap size={20} />} 
               active={activeTab === 'actions'} 
               onClick={() => { setActiveTab('actions'); setIsMobileMenuOpen(false); }}
-              label="TikGifty"
+              label="TikTok Hediye Etkileşim"
             />
             <SidebarItem 
               icon={<Monitor size={20} />} 
@@ -3265,10 +3558,18 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'voting' && (
+{activeTab === 'voting' && (
             <VotingGameDashboard 
               gameState={votingGame}
               setGameState={setVotingGame}
+              username={username}
+            />
+          )}
+
+          {activeTab === 'turkey-map-war' && (
+            <TurkeyMapDashboard 
+              gameState={turkeyMapGame}
+              setGameState={setTurkeyMapGame}
               username={username}
             />
           )}

@@ -16,6 +16,12 @@ model User {
   email               String    @unique
   password            String
   displayName         String?
+  firstName           String?
+  lastName            String?
+  tiktokUsername      String?
+  phone               String?
+  phoneCountryCode    String?
+  referredBy          String?
   photoURL            String?
   plan                String    @default("free")
   subscriptionExpires DateTime?
