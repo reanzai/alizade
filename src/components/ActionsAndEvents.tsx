@@ -85,21 +85,24 @@ export function ActionsAndEvents({
         </div>
       </Section>
 
-      {/* Olaylar */}
-      <Section title="Olaylar" description="Hangi durumda Hangi eylemin çalışacağını seçin">
+      {/* Olaylar -> Gift to Action */}
+      <Section title="TikTok Gift to Action (Tetikleyiciler)" description="Belirli bir TikTok hediyesini bir Eyleme (Action) bağlayın / tetikleyin.">
         <div className="bg-[#111317] border border-white/5 rounded-2xl p-6">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-white">Etkinlik Tetikleyicilerim</h3>
+            <div>
+              <h3 className="font-bold text-white">Event Triggers / Bağlantılar</h3>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Örn: Rose -{'>'} Zombi Sesi Çal</p>
+            </div>
             <button 
               onClick={() => {
                 setEditingTrigger({
                   id: Math.random().toString(36).substr(2, 9),
-                  active: true, user: 'Any', triggerType: 'Gift', triggerValue: '', actionIds: []
+                  active: true, user: 'Any', triggerType: 'Gift', triggerValue: 'Rose', actionIds: []
                 });
               }}
-              className="bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-600 transition-colors"
+              className="bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/20"
             >
-              <Plus size={14} /> Olay Ekle
+              <Plus size={14} /> Yeni Hediye Bağla (Gift -{'>'} Action)
             </button>
           </div>
           
@@ -111,14 +114,28 @@ export function ActionsAndEvents({
                     <Gift size={20} />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">{trigger.triggerType} - {trigger.triggerValue || 'Herhangi'}</h4>
-                    <p className="text-[10px] text-gray-400">Bağlı eylem: {trigger.actionIds.map(id => actions.find(a => a.id === id)?.name).join(', ') || 'Yok'}</p>
+                    <h4 className="text-sm font-bold text-white">
+                      {trigger.triggerType === 'Gift' ? `🎁 TikTok Hediyesi: ${trigger.triggerValue || 'Herhangi'}` : `${trigger.triggerType} - ${trigger.triggerValue || 'Herhangi'}`}
+                    </h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase">Tetikler:</span>
+                      <div className="flex gap-1 flex-wrap">
+                        {trigger.actionIds.length === 0 ? (
+                          <span className="text-[10px] text-red-400 bg-red-400/10 px-2 py-0.5 rounded">Eylem Seçilmedi</span>
+                        ) : (
+                          trigger.actionIds.map(id => {
+                            const a = actions.find(a => a.id === id);
+                            return a ? <span key={id} className="text-[10px] text-cyan-400 bg-cyan-400/10 px-2 py-0.5 rounded">{a.name}</span> : null;
+                          })
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className={`w-2 h-2 rounded-full ${trigger.active ? 'bg-emerald-500' : 'bg-gray-600'}`} />
-                  <button onClick={() => setEditingTrigger(trigger)} className="p-2 text-gray-500 hover:text-white"><Edit3 size={16} /></button>
-                  <button onClick={() => setEventTriggers(eventTriggers.filter(t => t.id !== trigger.id))} className="p-2 text-gray-500 hover:text-red-500"><Trash2 size={16} /></button>
+                  <div className={`w-2 h-2 rounded-full ${trigger.active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-gray-600'}`} />
+                  <button onClick={() => setEditingTrigger(trigger)} className="p-2 bg-white/5 rounded-lg text-gray-400 hover:text-white transition-colors" title="Düzenle"><Edit3 size={16} /></button>
+                  <button onClick={() => setEventTriggers(eventTriggers.filter(t => t.id !== trigger.id))} className="p-2 bg-white/5 rounded-lg text-gray-400 hover:text-red-500 transition-colors" title="Sil"><Trash2 size={16} /></button>
                 </div>
               </div>
             ))}
