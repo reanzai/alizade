@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import TurkeyMap from 'turkey-map-react';
-import { Settings, Play, Square, Users, Search, Plus, Trash2, Trophy, Crosshair, Map as MapIcon, Image as ImageIcon } from 'lucide-react';
+import { Settings, Play, Square, Users, Search, Plus, Trash2, Trophy, Crosshair, Map as MapIcon, Image as ImageIcon, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export interface MapTeam {
@@ -309,7 +309,7 @@ export const TurkeyMapOverlay: React.FC<{ gameState: TurkeyMapGameState }> = ({ 
     const ownerId = cityState?.ownerId;
     const team = ownerId ? gameState.teams.find(t => t.id === ownerId) : null;
     
-    return React.cloneElement(cityComponent, {
+    return React.cloneElement(cityComponent as React.ReactElement<any>, {
       fill: team ? team.color : '#1e293b', // default gray if unowned
       stroke: '#0f172a',
       strokeWidth: 1,

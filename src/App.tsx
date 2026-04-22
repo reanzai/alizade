@@ -130,7 +130,7 @@ export interface TikTokEventTrigger {
   id: string;
   active: boolean;
   user: string;
-  triggerType: 'Follow' | 'Gift' | 'Like' | 'Subscribe' | 'Share' | 'Join';
+  triggerType: 'Follow' | 'Gift' | 'Like' | 'Subscribe' | 'Share' | 'Join' | 'Chat';
   triggerValue?: string; // e.g. "Rose" for Gift, or "100" for Likes
   actionIds: string[];
   minCount?: number;
@@ -322,7 +322,7 @@ export default function App() {
   const [events, setEvents] = useState<TikTokEvent[]>([]);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'actions' | 'events' | 'overlay' | 'leaderboard' | 'settings' | 'games' | 'kelime-oyunu' | 'beyblade' | 'pixel-conquest' | 'voting' | 'pricing' | 'about'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'actions' | 'events' | 'overlay' | 'leaderboard' | 'settings' | 'games' | 'kelime-oyunu' | 'beyblade' | 'pixel-conquest' | 'voting' | 'pricing' | 'about' | 'turkey-map-war'>('dashboard');
   const [editingAction, setEditingAction] = useState<TikTokAction | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -370,7 +370,7 @@ export default function App() {
   const [userStats, setUserStats] = useState<Record<string, UserStat>>({});
   const [activeAlerts, setActiveAlerts] = useState<ActiveAlert[]>([]);
   const [isOverlayMode, setIsOverlayMode] = useState(false);
-  const [gameOverlayMode, setGameOverlayMode] = useState<'game' | 'leaderboard' | 'stream' | 'beyblade' | 'pixel-conquest' | 'voting' | null>(null);
+  const [gameOverlayMode, setGameOverlayMode] = useState<'game' | 'leaderboard' | 'stream' | 'beyblade' | 'pixel-conquest' | 'voting' | 'turkey-map' | null>(null);
   const [selectedTheme, setSelectedTheme] = useState<'minimal' | 'vibrant' | 'dark' | 'neon' | 'cyberpunk' | 'glassmorphism'>('vibrant');
   const [overlayFont, setOverlayFont] = useState<string>('font-sans');
   const [overlayAccent, setOverlayAccent] = useState<string>('');
@@ -1062,8 +1062,8 @@ export default function App() {
   const isSpeakingRef = useRef(false);
 
   // TTS Logic
-  const speak = (text: string, voiceName?: string, soundUrl?: string) => {
-    if (!isTTSEnabled || !window.speechSynthesis) return;
+  const speak = (text: string, voiceName?: string, soundUrl?: string, force: boolean = false) => {
+    if ((!isTTSEnabled && !force) || !window.speechSynthesis) return;
     
     ttsQueueRef.current.push({text, voiceName, soundUrl});
     processTTSQueue();
@@ -1384,8 +1384,8 @@ export default function App() {
     // Handle TTS
     if (action.type === 'tts' || (action.ttsEnabled && action.ttsTemplate)) {
       const template = action.type === 'tts' ? (action.ttsTemplate || '{nickname} triggered an action!') : action.ttsTemplate!;
-      const message = template.replace('{nickname}', nickname).replace('{giftName}', action.name);
-      speak(message, action.ttsVoice, action.ttsSoundEffect);
+      const message = template.replace(/{nickname}/g, nickname).replace(/{giftName}/g, action.name);
+      speak(message, action.ttsVoice, action.ttsSoundEffect, true);
     }
   };
 
@@ -1419,12 +1419,20 @@ export default function App() {
       
       let matches = false;
       // Basic trigger matching
-      if (et.triggerType === 'Gift' && data.type === 'gift' && data.giftName === et.triggerValue) matches = true;
+      if (et.triggerType === 'Gift' && data.type === 'gift') {
+        if (!et.triggerValue || et.triggerValue === 'Any' || et.triggerValue === 'Any Gift' || data.giftName?.toLowerCase() === et.triggerValue?.toLowerCase()) {
+          matches = true;
+        }
+      }
       if (et.triggerType === 'Follow' && data.type === 'social' && data.displayType?.includes('follow')) matches = true;
       if (et.triggerType === 'Like' && data.type === 'like' && data.likeCount >= parseInt(et.triggerValue || '0')) matches = true;
       if (et.triggerType === 'Subscribe' && data.type === 'social' && data.displayType?.includes('subscribe')) matches = true;
       if (et.triggerType === 'Share' && data.type === 'social' && data.displayType?.includes('share')) matches = true;
       if (et.triggerType === 'Join' && data.type === 'social' && data.displayType?.includes('join')) matches = true;
+      if (et.triggerType === 'Chat' && data.type === 'chat') {
+        const keyword = et.triggerValue?.toLowerCase() || '';
+        if (!keyword || data.comment?.toLowerCase().includes(keyword)) matches = true;
+      }
       
       if (!matches) return false;
 
@@ -3986,11 +3994,11 @@ export default function App() {
                     <span className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-xs font-black">1</span>
                     TikTok Etkileşimi (Tetikleyici)
                   </h4>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                    {['Gift', 'Follow', 'Like', 'Share', 'Subscribe', 'Join'].map((type) => (
+                  <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
+                    {['Gift', 'Follow', 'Like', 'Share', 'Subscribe', 'Join', 'Chat'].map((type) => (
                       <button
                         key={type}
-                        onClick={() => setEditingTrigger({...editingTrigger, triggerType: type as any, triggerValue: type === 'Gift' ? 'Rose' : ''})}
+                        onClick={() => setEditingTrigger({...editingTrigger, triggerType: type as any, triggerValue: type === 'Gift' ? 'Rose' : (type === 'Chat' ? '!komut' : '')})}
                         className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-2 transition-all ${
                           editingTrigger.triggerType === type
                             ? 'bg-gradient-to-br from-cyan-500/20 to-transparent border-cyan-500 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.15)]'
@@ -4003,20 +4011,22 @@ export default function App() {
                         {type === 'Share' && <Share2 size={20} />}
                         {type === 'Subscribe' && <Zap size={20} />}
                         {type === 'Join' && <Users size={20} />}
+                        {type === 'Chat' && <MessageSquare size={20} />}
                         <span className="text-[10px] font-black uppercase tracking-widest">{type}</span>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* 2. Hediye Adı (Eğer Gift seçiliyse) */}
-                {editingTrigger.triggerType === 'Gift' && (
+                {/* 2. Değer Adı (Gift veya Chat) */}
+                {(editingTrigger.triggerType === 'Gift' || editingTrigger.triggerType === 'Chat') && (
                   <div className="space-y-4 bg-[#11141C] border border-[#252A36] rounded-2xl p-6 relative overflow-hidden">
                     <div className="absolute -right-12 -top-12 opacity-10">
-                        <Gift size={120} className="text-pink-500" />
+                        {editingTrigger.triggerType === 'Gift' ? <Gift size={120} className="text-pink-500" /> : <MessageSquare size={120} className="text-pink-500" />}
                     </div>
                     <label className="text-[10px] font-black text-pink-500 uppercase tracking-widest flex items-center gap-2 relative z-10">
-                       <Gift size={14} /> Hangi Hediye Geldiğinde Çalışsın?
+                       {editingTrigger.triggerType === 'Gift' ? <Gift size={14} /> : <MessageSquare size={14} />} 
+                       {editingTrigger.triggerType === 'Gift' ? 'Hangi Hediye Geldiğinde Çalışsın?' : 'Hangi Kelime Yazıldığında Çalışsın?'}
                     </label>
                     
                     <div className="space-y-4 relative z-10">
@@ -4024,22 +4034,37 @@ export default function App() {
                         type="text" 
                         value={editingTrigger.triggerValue || ''}
                         onChange={(e) => setEditingTrigger({...editingTrigger, triggerValue: e.target.value})}
-                        placeholder="Örn: Rose, GG, Leon the Kitten..."
+                        placeholder={editingTrigger.triggerType === 'Gift' ? "Örn: Rose, Any Gift..." : "Örn: !komut, merhaba, Any..."}
                         className="w-full bg-[#1A1F2C] border border-[#252A36] rounded-xl p-4 text-sm font-bold text-white focus:outline-none focus:border-pink-500 transition-colors shadow-inner"
                       />
-                      <div className="flex gap-2 flex-wrap pb-2">
-                        {['Rose', 'GG', 'TikTok', 'Finger Heart', 'Corgi', 'Leon the Kitten', 'Doughnut', 'Ice Cream'].map(preset => (
-                          <button
-                            key={preset}
-                            onClick={() => setEditingTrigger({...editingTrigger, triggerValue: preset})}
-                            className="bg-black/40 hover:bg-pink-500/20 hover:text-pink-400 hover:border-pink-500/50 border border-[#252A36] text-gray-400 text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors"
-                          >
-                            {preset}
-                          </button>
-                        ))}
-                      </div>
+                      {editingTrigger.triggerType === 'Gift' && (
+                        <div className="flex gap-2 flex-wrap pb-2">
+                          {['Any Gift', 'Rose', 'GG', 'TikTok', 'Finger Heart', 'Corgi', 'Leon the Kitten', 'Doughnut', 'Ice Cream'].map(preset => (
+                            <button
+                              key={preset}
+                              onClick={() => setEditingTrigger({...editingTrigger, triggerValue: preset})}
+                              className="bg-black/40 hover:bg-pink-500/20 hover:text-pink-400 hover:border-pink-500/50 border border-[#252A36] text-gray-400 text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors"
+                            >
+                              {preset}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {editingTrigger.triggerType === 'Chat' && (
+                        <div className="flex gap-2 flex-wrap pb-2">
+                          {['!discord', '!sosyal', '!yardım'].map(preset => (
+                            <button
+                              key={preset}
+                              onClick={() => setEditingTrigger({...editingTrigger, triggerValue: preset})}
+                              className="bg-black/40 hover:bg-pink-500/20 hover:text-pink-400 hover:border-pink-500/50 border border-[#252A36] text-gray-400 text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors"
+                            >
+                              {preset}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest border-t border-white/5 pt-3">
-                         Not: Hediye adını tam olarak TikTok'ta görüldüğü gibi (Büyük/Küçük harfe duyarlı) girin.
+                         Not: {editingTrigger.triggerType === 'Gift' ? "Hediye adını tam olarak TikTok'ta görüldüğü gibi (Büyük/Küçük harfe duyarlı) girin." : "Chat kelimesi yazıldığında veya chat içeriyorsa."}
                       </p>
                     </div>
                   </div>

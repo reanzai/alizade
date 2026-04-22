@@ -1,6 +1,4 @@
-import type { User } from '@prisma/client';
-import pkg from '@prisma/client';
-const { PrismaClient, Prisma } = pkg;
+import { PrismaClient, Prisma, User } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
