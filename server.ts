@@ -78,7 +78,7 @@ async function startServer() {
     },
     credentials: true
   }));
-  app.use(express.json({ limit: '10kb' })); // Limit body size
+  app.use(express.json({ limit: '1mb' })); // Limit body size
 
   // --- Multer Setup ---
   const storage = multer.diskStorage({
@@ -100,10 +100,14 @@ async function startServer() {
     limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
     fileFilter: (req, file, cb) => {
       const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'image/jpeg', 'image/png', 'image/gif'];
-      if (allowedTypes.includes(file.mimetype)) {
+      const allowedExtensions = ['.mp3', '.wav', '.ogg', '.jpg', '.jpeg', '.png', '.gif'];
+      
+      const ext = path.extname(file.originalname).toLowerCase();
+      
+      if (allowedTypes.includes(file.mimetype) && allowedExtensions.includes(ext)) {
         cb(null, true);
       } else {
-        cb(new Error('Invalid file type. Only audio and images are allowed.'));
+        cb(new Error('Invalid file type or extension. Only audio and images are allowed.'));
       }
     }
   });
@@ -291,6 +295,8 @@ async function startServer() {
     }
   });
 
+  const requestStateLimits = new Map<string, number>();
+
   io.on("connection", (socket) => {
     socket.on("join-room", (username: string) => {
       socket.join(`room_${username}`);
@@ -303,6 +309,12 @@ async function startServer() {
     });
 
     socket.on("request-state", (username: string) => {
+      // Security: Prevent request-state ping storms (Rate Limit: 1 per 2 seconds per room)
+      const now = Date.now();
+      const last = requestStateLimits.get(username) || 0;
+      if (now - last < 2000) return;
+      requestStateLimits.set(username, now);
+      
       socket.to(`room_${username}`).emit("request-state");
     });
 
