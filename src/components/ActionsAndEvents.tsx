@@ -223,31 +223,54 @@ export function ActionsAndEvents({
       </Section>
 
       {/* Event Simülatörü */}
-      <Section title="Event Simulator" description="Tetikleyicileri test et">
+      <Section title="Event Simulator" description="Tetikleyicileri test et (Sanal Olaylar)">
         <div className="bg-[#111317] border border-white/5 rounded-2xl p-6 space-y-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <SimButton label="Takip Et" onClick={() => handleTikTokEvent({ nickname: 'SimUser', type: 'social', displayType: 'follow', timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/1/100/100' })} />
-            <SimButton label="Paylaş" onClick={() => handleTikTokEvent({ nickname: 'SimUser', type: 'social', displayType: 'share', timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/2/100/100' })} />
-            <SimButton label="Abone Ol" onClick={() => handleTikTokEvent({ nickname: 'SimUser', type: 'social', displayType: 'subscribe', timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/3/100/100' })} />
-            <SimButton label="15 Beğeni" onClick={() => handleTikTokEvent({ nickname: 'SimUser', type: 'like', likeCount: 15, timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/4/100/100' })} />
+            <SimButton label="Takip Et" onClick={() => handleTikTokEvent({ uniqueId: 'sim1', nickname: 'SimUser', type: 'social', displayType: 'follow', timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/1/100/100' })} />
+            <SimButton label="Paylaş" onClick={() => handleTikTokEvent({ uniqueId: 'sim2', nickname: 'SimUser', type: 'social', displayType: 'share', timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/2/100/100' })} />
+            <SimButton label="Abone Ol" onClick={() => handleTikTokEvent({ uniqueId: 'sim3', nickname: 'SimUser', type: 'social', displayType: 'subscribe', timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/3/100/100' })} />
+            <SimButton label="15 Beğeni" onClick={() => handleTikTokEvent({ uniqueId: 'sim4', nickname: 'SimUser', type: 'like', likeCount: 15, timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/4/100/100' })} />
           </div>
           <div className="h-[1px] bg-white/5" />
-          <div className="flex gap-3">
-            <select 
-              value={selectedGift}
-              onChange={(e) => setSelectedGift(e.target.value)}
-              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-4 py-2.5 text-xs font-bold focus:border-cyan-500/50 outline-none text-white"
-            >
-              <option value="Rose">Rose</option>
-              <option value="Finger Heart">Finger Heart</option>
-              <option value="Diamond">Diamond</option>
-            </select>
-            <button 
-              onClick={() => handleTikTokEvent({ nickname: 'SimUser', type: 'gift', giftName: selectedGift, timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/5/100/100', uniqueId: 'simuser123' })}
-              className="bg-cyan-500 text-white px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-cyan-600 transition-colors flex items-center gap-2"
-            >
-              <Play size={14} /> Gönder
-            </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex gap-3">
+              <select 
+                value={selectedGift}
+                onChange={(e) => setSelectedGift(e.target.value)}
+                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-4 py-2.5 text-xs font-bold focus:border-cyan-500/50 outline-none text-white"
+              >
+                <option value="Rose">Rose</option>
+                <option value="Finger Heart">Finger Heart</option>
+                <option value="Diamond">Diamond</option>
+                <option value="TikTok">TikTok</option>
+                <option value="Lion">Lion</option>
+                <option value="Universe">Universe</option>
+              </select>
+              <button 
+                onClick={() => handleTikTokEvent({ nickname: 'SimUser', type: 'gift', giftName: selectedGift, repeatCount: 1, diamondCount: 1, timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/5/100/100', uniqueId: 'simuser123' })}
+                className="bg-cyan-500 text-white px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-cyan-600 transition-colors flex items-center gap-2"
+              >
+                <Play size={14} /> Gönder
+              </button>
+            </div>
+            <div className="flex gap-3">
+              <input 
+                type="text"
+                placeholder="Örn: !discord"
+                id="simChatText"
+                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-4 py-2.5 text-xs font-bold focus:border-emerald-500/50 outline-none text-white"
+              />
+              <button 
+                onClick={() => {
+                  const input = document.getElementById('simChatText') as HTMLInputElement;
+                  handleTikTokEvent({ nickname: 'SimChatter', type: 'chat', comment: input.value || 'merhaba', timestamp: Date.now(), profilePictureUrl: 'https://picsum.photos/seed/6/100/100', uniqueId: 'simuser456' });
+                  input.value = '';
+                }}
+                className="bg-emerald-500 text-white px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-emerald-600 transition-colors flex items-center gap-2"
+              >
+                <Play size={14} /> Yaz
+              </button>
+            </div>
           </div>
         </div>
       </Section>

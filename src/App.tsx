@@ -980,7 +980,6 @@ export default function App() {
     follows: 0
   });
 
-  const [isDemoMode, setIsDemoMode] = useState(false);
   const [isTTSEnabled, setIsTTSEnabled] = useState(false);
   const [ttsVoice, setTtsVoice] = useState<SpeechSynthesisVoice | null>(null);
   const [followerGoal, setFollowerGoal] = useState({ current: 0, target: 100, label: 'Follower Goal' });
@@ -1114,95 +1113,6 @@ export default function App() {
     loadVoices();
     window.speechSynthesis.onvoiceschanged = loadVoices;
   }, []);
-
-  // Simulation for Demo Mode
-  useEffect(() => {
-    if (!isDemoMode) return;
-
-    const interval = setInterval(() => {
-      const types: ('chat' | 'gift' | 'social' | 'like')[] = ['chat', 'chat', 'gift', 'social', 'like'];
-      const type = types[Math.floor(Math.random() * types.length)];
-      
-      const mockData = {
-        nickname: ['Alex', 'Sarah', 'Mike', 'Luna', 'Zen'][Math.floor(Math.random() * 5)],
-        uniqueId: 'user_' + Math.floor(Math.random() * 1000),
-        profilePictureUrl: `https://picsum.photos/seed/${Math.random()}/100/100`,
-        comment: ['Hello!', 'Wow!', 'Cool stream!', 'Love this!', 'Nice!'][Math.floor(Math.random() * 5)],
-        giftName: ['Rose', 'Finger Heart', 'Diamond'][Math.floor(Math.random() * 3)],
-        diamondCount: Math.floor(Math.random() * 10) + 1,
-        repeatCount: 1,
-        likeCount: Math.floor(Math.random() * 50) + 1,
-        displayType: 'pm_mt_guidance_viewer_follow'
-      };
-
-      if (type === 'chat') {
-        const newEvent: TikTokEvent = {
-          id: Math.random().toString(36).substr(2, 9),
-          type: 'chat',
-          nickname: mockData.nickname,
-          uniqueId: mockData.uniqueId,
-          profilePictureUrl: mockData.profilePictureUrl,
-          comment: mockData.comment,
-          timestamp: Date.now()
-        };
-        setEvents(prev => [newEvent, ...prev].slice(0, 500));
-        updateUserStats(mockData, 'chat');
-        if (isTTSEnabled) speak(`${mockData.nickname} says: ${mockData.comment}`);
-
-        // Check for commands
-        const matchingCommand = commands.find(c => c.enabled && mockData.comment?.toLowerCase().includes(c.command.toLowerCase()));
-        if (matchingCommand) {
-          const botEvent: TikTokEvent = {
-            id: Math.random().toString(36).substr(2, 9),
-            type: 'bot',
-            nickname: 'TikLocal Bot',
-            uniqueId: 'system',
-            profilePictureUrl: 'https://cdn-icons-png.flaticon.com/512/4712/4712035.png',
-            response: matchingCommand.response,
-            timestamp: Date.now()
-          };
-          setTimeout(() => {
-            setEvents(prev => [botEvent, ...prev].slice(0, 500));
-          }, 500);
-        }
-      } else if (type === 'gift') {
-        const newEvent: TikTokEvent = {
-          id: Math.random().toString(36).substr(2, 9),
-          type: 'gift',
-          nickname: mockData.nickname,
-          uniqueId: mockData.uniqueId,
-          profilePictureUrl: mockData.profilePictureUrl,
-          giftName: mockData.giftName,
-          repeatCount: 1,
-          diamondCount: mockData.diamondCount,
-          timestamp: Date.now()
-        };
-        setEvents(prev => [newEvent, ...prev].slice(0, 500));
-        setStats(prev => ({ ...prev, gifts: prev.gifts + mockData.diamondCount }));
-        setGiftGoal(prev => ({ ...prev, current: prev.current + mockData.diamondCount }));
-        updateUserStats(mockData, 'gift');
-        handleTikTokEvent(mockData);
-      } else if (type === 'social') {
-        const newEvent: TikTokEvent = {
-          id: Math.random().toString(36).substr(2, 9),
-          type: 'social',
-          nickname: mockData.nickname,
-          uniqueId: mockData.uniqueId,
-          profilePictureUrl: mockData.profilePictureUrl,
-          label: 'followed you',
-          timestamp: Date.now()
-        };
-        setEvents(prev => [newEvent, ...prev].slice(0, 500));
-        setStats(prev => ({ ...prev, follows: prev.follows + 1 }));
-        setFollowerGoal(prev => ({ ...prev, current: prev.current + 1 }));
-      } else if (type === 'like') {
-        setStats(prev => ({ ...prev, likes: prev.likes + mockData.likeCount }));
-        updateUserStats(mockData, 'like');
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [isDemoMode]);
 
   // Firebase Auth Listener
   useEffect(() => {
@@ -1339,25 +1249,27 @@ export default function App() {
 
     const intervals = activeTimers.map(timer => {
       return setInterval(() => {
-        triggerAction('System', timer.actionId);
+        triggerAction({ nickname: 'System', type: 'system' }, timer.actionId);
       }, timer.intervalMinutes * 60 * 1000);
     });
 
     return () => intervals.forEach(clearInterval);
   }, [isConnected, timers]);
 
-  const triggerAction = (nickname: string, actionId: string) => {
+  const triggerAction = (data: any, actionId: string) => {
     const action = actions.find(a => a.id === actionId);
     if (!action) return;
 
     const alertId = Math.random().toString(36).substr(2, 9);
+    const nickname = data.nickname || 'System';
+    const giftName = data.type === 'gift' ? data.giftName : data.comment || action.name;
     
     // Only add to activeAlerts if it has a visual component
     if (action.type === 'alert' || action.type === 'animation') {
       const newAlert: ActiveAlert = {
         id: alertId,
         nickname,
-        giftName: action.name,
+        giftName: giftName,
         gifUrl: action.imageUrl,
         soundUrl: action.soundUrl,
         type: action.type,
@@ -1383,8 +1295,8 @@ export default function App() {
 
     // Handle TTS
     if (action.type === 'tts' || (action.ttsEnabled && action.ttsTemplate)) {
-      const template = action.type === 'tts' ? (action.ttsTemplate || '{nickname} triggered an action!') : action.ttsTemplate!;
-      const message = template.replace(/{nickname}/g, nickname).replace(/{giftName}/g, action.name);
+      const template = action.type === 'tts' ? (action.ttsTemplate || '{nickname} sent {giftName}!') : action.ttsTemplate!;
+      const message = template.replace(/{nickname}/g, nickname).replace(/{giftName}/g, giftName);
       speak(message, action.ttsVoice, action.ttsSoundEffect, true);
     }
   };
@@ -1447,7 +1359,7 @@ export default function App() {
 
     matchingEvents.forEach(et => {
       et.actionIds.forEach(actionId => {
-        triggerAction(data.nickname, actionId);
+        triggerAction(data, actionId);
       });
     });
 
@@ -2061,9 +1973,6 @@ export default function App() {
               >
                 <LogIn size={24} />
                 Get Started Free
-              </button>
-              <button className="w-full sm:w-auto bg-white/5 border border-white/10 text-white px-10 py-5 rounded-2xl font-black text-xl hover:bg-white/10 transition-all">
-                View Demo
               </button>
             </motion.div>
           </div>

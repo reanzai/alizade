@@ -1,177 +1,47 @@
-# TikGifty - TikTok Canlı Yayın Etkileşim Paneli
+# TikGifty - TikTok Canlı Yayın Etkileşim ve Oyun Platformu
 
-TikGifty, TikTok canlı yayıncıları için geliştirilmiş, izleyici etkileşimini artırmayı hedefleyen kapsamlı bir web uygulamasıdır. Canlı yayın sırasında gelen hediyeleri, yorumları, beğenileri ve takipleri anlık olarak takip eder; ekranda özel uyarılar (ses, GIF, TTS) gösterir ve izleyicilerin katılabileceği interaktif oyunlar (Kelime Oyunu, Beyblade, Pixel Conquest) sunar.
+TikGifty, TikTok yayıncılarının canlı yayınlarını daha interaktif, eğlenceli ve kazançlı hale getirmelerini sağlayan tam kapsamlı bir platformdur. TikFinity gibi araçlara güçlü bir alternatif olarak geliştirilmiştir. İzleyicilerin gönderdiği hediyeler, yaptığı takipler, beğeniler ve sohbet komutları ile ekranda eylemler tetikleyebilir (sesler, özel animasyonlar, TTS) veya canlı strateji oyunları oynatabilirsiniz.
 
-## 🚀 Kullanılan Teknolojiler
+## 🚀 Özellikler
 
-### Frontend (İstemci)
-*   **React (Vite):** Hızlı ve modern kullanıcı arayüzü geliştirme altyapısı.
-*   **TypeScript:** Statik tip kontrolü ile güvenli ve hatasız kod yazımı.
-*   **Tailwind CSS:** Hızlı, esnek ve modern UI/UX tasarımı.
-*   **Framer Motion:** Akıcı ve dinamik arayüz animasyonları.
-*   **Socket.IO Client:** Sunucu ile gerçek zamanlı (real-time) çift yönlü iletişim.
-*   **React Helmet Async:** SEO optimizasyonu ve dinamik meta etiket yönetimi.
-*   **Lucide React:** Modern ve hafif ikon seti.
-*   **i18next:** Çoklu dil (yerelleştirme) desteği.
-*   **Swiper:** Modern ve dokunmatik destekli kaydırma (carousel) bileşenleri.
+- **Gerçek Zamanlı TikTok Entegrasyonu:** Yayına anında bağlanır; chat, hediye, beğeni, takip ve üyelik olaylarını milisaniyeler içinde yakalar.
+- **Gelişmiş Eylem ve Tetikleyiciler (Actions & Events):** Gelen özel bir hediyeyi veya belirli bir chat komutunu; ses oynatmaya, ekranda GIF göstermeye veya yazıyı sese çevirme (TTS) işlemine bağlayabilirsiniz.
+- **İnteraktif Yayın Oyunları:**
+  - 🇹🇷 **Türkiye Harita Savaşı:** İzleyicilerin attığı hediyeler ile illeri ele geçirdiği amansız bir strateji oyunu.
+  - ⚔️ **Beyblade Savaşları:** İzleyicilerin beğeni ve hediyelerle arenaya katılıp savaştığı arena oyunu.
+  - 🎨 **Pixel Conquest (Piksel Savaşı):** İzleyicilerin pikselleri boyayarak en büyük alanı kapmaya çalıştığı rekabetçi oyun.
+  - 🗳️ **Canlı Oylama ve Kelime Oyunları.**
+- **OBS & Live Studio Uyumlu Kaplamalar (Overlays):** Şeffaf arka planlı URL kaynakları ile yayın programınıza saniyeler içinde eklenir.
 
-### Backend (Sunucu)
-*   **Node.js & Express:** Hızlı ve ölçeklenebilir REST API ve sunucu altyapısı.
-*   **Socket.IO:** TikTok canlı yayın verilerini anlık olarak istemciye iletme.
-*   **TikTok Live Connector:** TikTok canlı yayınlarına bağlanıp anlık verileri (hediye, yorum, beğeni vb.) çekmek için kullanılan açık kaynaklı kütüphane.
-*   **Multer:** Kullanıcıların özel ses ve görsel dosyalarını yükleyebilmesi için dosya yükleme yönetimi.
+## 💻 Teknoloji Yığını (Tech Stack)
 
-### Veritabanı ve Kimlik Doğrulama
-*   **PostgreSQL:** Uygulamanın ana veritabanı olarak seçildi (User, Wallet ve Settings verileri için).
-*   **Prisma ORM:** Tip güvenliği ve veritabanı sorgu yönetimi için kullanılan modern SQL arayüzü.
-*   **Firebase (Opsiyonel):** Google ile giriş (Authentication) desteği. (Sistem artık öncelikli olarak PostgreSQL & Express tabanlı 'Self-hosted' mimariyi kullanmaktadır).
+Proje, modern ve ölçeklenebilir bir "Full-Stack" (Tam Yığın) web mimarisi üzerine inşa edilmiştir:
 
-## 🛠️ Yapılan Son Güncellemeler (PostgreSQL Geçişi)
+### Frontend (Kullanıcı Arayüzü)
+- **React 18 & Vite:** Yüksek performanslı ve hızlı derlenen arayüz.
+- **TypeScript:** Tip güvenliği ve ölçeklenebilir kod yapısı.
+- **Tailwind CSS:** Hızlı ve esnek stillendirme, modern UI/UX bileşenleri.
+- **Framer Motion (`motion/react`):** Akıcı pencereler, modal animasyonları ve oyun içi görsel efektler.
+- **Context API & React Hooks:** Yerel durum (state) yönetimi.
 
-Projeye eklenen ve güncellenen temel özellikler:
+### Backend (Sunucu & API)
+- **Node.js & Express:** Hızlı yönlendirme yapısı, kimlik doğrulama ve API servisleri.
+- **Socket.io (WebSockets):** Sunucu ile Frontend (Overlay ve Dashboard) arasında çift yönlü, anlık, gerçek zamanlı veri aktarımı.
+- **tiktok-live-connector:** TikTok'un canlı yayın sunucularına resmi olmayan yoldan bağlanıp WebSocket üzerinden akan hediye/chat verilerini anlamlı bir formata dönüştüren kütüphane.
+- **JWT & Bcrypt:** Güvenli kullanıcı kimlik doğrulama, token bazlı oturum yönetimi.
 
-1.  **MongoDB'den PostgreSQL'e Geçiş:**
-    *   Veritabanı altyapısı MongoDB'den tamamen PostgreSQL'e taşındı.
-    *   `prisma/schema.prisma` yapılandırması PostgreSQL ve UUID (Benzersiz Kimlik) sistemine göre optimize edildi.
-    *   Mongoose bağımlılığı projeden kaldırıldı ve tüm veritabanı işlemleri `@prisma/client` üzerinden yönetilmeye başlandı.
+### Database (Veritabanı)
+- **PostgreSQL:** Dünyanın en gelişmiş açık kaynaklı, ilişkisel veritabanı yönetim sistemi. Veri tutarlılığı (Data Integrity) ve karmaşık ilişkiler gerektiren kullanıcı verileri için kullanılmıştır.
+- **Prisma ORM:** PostgreSQL ile Node.js haberleşmesini sağlayan, tip korumalı mükemmel veritabanı bağdaştırıcısı (ORM). `schema.prisma` üzerinden veritabanı tabloları şemalar halinde yönetilir.
 
-2.  **Prisma Entegrasyonu:**
-    *   `PrismaClient` kullanılarak `User`, `Wallet` ve `Settings` modelleri oluşturuldu.
-    *   `prisma.config.ts` üzerinden dinamik veritabanı bağlantı yönetimi sağlandı.
+## 🛠️ Sistem Nasıl Çalışıyor? (Mimari Akış)
 
-3.  **Backend (Sunucu) Modernizasyonu:**
-    *   Kayıt, giriş ve kullanıcı verisi çekme işlemleri PostgreSQL/Prisma altyapısına uyarlandı.
-    *   Ayarlar (`Settings`) yönetimi, tüm konfigürasyonu (Hediye ayarları, oyun tabloları vb.) tek bir tabloda tutacak şekilde `upsert` (varsa güncelle, yoksa oluştur) mimarisine dönüştürüldü.
-    *   NoSQL'e özgü filtreler (mongo-sanitize vb.) kaldırılarak SQL güvenliği için gerekli önlemler alındı.
+1. **Bağlantı:** Yayıncı (kullanıcı) platforma TikTok kullanıcı adını (örn: `@yayincii`) girer.
+2. **Dinleme:** Backend'de çalışan `tiktok-live-connector`, kullanıcının TikTok yayınına WebSocket üzerinden bağlanarak canlı JSON verilerini (chat stream) dinlemeye başlar.
+3. **Gerçek Zamanlı Aktarım:** TikGifty sunucusu, TikTok'tan gelen (Hediye, Chat, Beğeni vb.) verileri temizler ve `Socket.io` aracılığıyla anında tarayıcıya (Frontend) fırlatır.
+4. **Eylem Eşleştirme (Trigger Logic):** React uygulaması bu veriyi alır ve yayıncının paneline kaydettiği "Olay Bağlantıları" ile kıyaslar. (Örn: *Eğer gelen Hediye == 'Rose' ise ID'si 1 olan Eylemi tetikle*).
+5. **Overlay (Ekrana Yansıtma):** Eşleşen eylemler (Ses çalınması, animasyonlu metin) veya Oyun içi statü değişiklikleri (Haritada bir ilin ele geçirilmesi), yayıncının OBS yazılımındaki `Özel Overlay URL` sekmesinde saniyesinde güncellenir ve yayına yansır.
+6. **Kayıt:** Yayıncının elde ettiği gelirler, liderlik tabloları ve puan geçmişi Prisma ORM aracıyla PostgreSQL veritabanına işlenip sonsuza kadar saklanır.
 
-4.  **Frontend (İstemci) Uyarlamaları:**
-    *   Uygulama artık varsayılan olarak `IS_SELF_HOSTED` modunda çalışarak PostgreSQL tabanlı backend ile konuşmaktadır.
-    *   Hediye ayarları ve oyun lider tabloları gibi dağınık API çağrıları merkezi `/api/settings` endpoint'inde birleştirildi.
-    *   Veri yapılarındaki `_id` bağımlılığı `id` yapısına güncellenerek SQL uyumluluğu sağlandı.
-
-## 📂 Proje Yapısı
-
-```text
-├── prisma/                 # Veritabanı şeması ve migrasyon dosyaları
-├── public/                 # Statik dosyalar (robots.txt, sitemap.xml vb.)
-├── src/                    # Frontend (React) kaynak kodları
-│   ├── components/         # UI bileşenleri (Oyunlar, Overlay vb.)
-│   ├── App.tsx             # Ana React bileşeni (Uygulamanın kalbi)
-│   ├── firebase.ts         # Firebase yardımcı fonksiyonları
-│   └── i18n.ts             # Dil ve çeviri yapılandırması
-├── server.ts               # Backend (Express & Socket.IO & Prisma)
-├── prisma.config.ts        # Prisma veritabanı bağlantı ayarları
-├── .env.example            # Gerekli değişkenlerin (DATABASE_URL vb.) şablonu
-└── package.json            # Bağımlılıklar ve script'ler
-```
-
-## ⚙️ Nasıl Çalışır?
-
-1.  **Bağlantı:** Kullanıcı, TikGifty paneline giriş yapar ve TikTok kullanıcı adını girerek "Bağlan" butonuna tıklar.
-2.  **Veri Çekme (Backend):** Node.js sunucusu, `tiktok-live-connector` kütüphanesini kullanarak belirtilen TikTok hesabının canlı yayınına WebSocket üzerinden bağlanır.
-3.  **Olay Dinleme (Event Listening):** Sunucu; canlı yayındaki sohbetleri, gönderilen hediyeleri, beğenileri ve yeni takipçileri dinlemeye başlar.
-4.  **Gerçek Zamanlı İletim:** Yakalanan her olay (event), `Socket.IO` aracılığıyla anında React frontend'ine (istemciye) iletilir.
-5.  **Görselleştirme ve Etkileşim (Frontend):** Frontend, gelen bu verileri işler:
-    *   Ekranda özel hediye uyarıları (Alerts) çıkarır.
-    *   Yazı-Sese (TTS - Text-to-Speech) özelliği ile gelen mesajları okur.
-    *   İzleyicilerin gönderdiği hediyelere veya yorumlara göre oyunları (Beyblade, Pixel Conquest vb.) tetikler ve günceller.
-6.  **OBS Entegrasyonu:** Kullanıcılar, "Overlay" modunu kullanarak kendilerine özel oluşturulan URL'yi OBS (Open Broadcaster Software) gibi yayın programlarına "Tarayıcı Kaynağı" (Browser Source) olarak ekler ve grafikleri doğrudan yayın ekranına yansıtır.
-
-## 🌐 VDS Sunucuya Kurulum ve Domaine Bağlama (Canlıya Alma Rehberi)
-
-Uygulamanızı kendi VDS (Sanal Sunucu) ortamınızda kurup, kendi alan adınız (domain) ile dünyaya açık (public) hale getirmek için **Ubuntu** sunucunuzda aşağıdaki adımları sırasıyla uygulayın.
-
-### 1. Sunucu Gereksinimlerinin Kurulması (Node.js, PM2, Nginx, PostgreSQL)
-Sunucunuza SSH ile bağlanıp temel paketleri kurun:
-```bash
-sudo apt update && sudo apt upgrade -y
-# Node.js Kurulumu
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-# PM2 Kurulumu (Uygulamayı arkaplanda açık tutmak için)
-sudo npm install -g pm2
-# Nginx ve PostgreSQL Kurulumu
-sudo apt install nginx postgresql postgresql-contrib -y
-```
-
-### 2. Sitenizi Nereye Kuracağınızı Seçin
-Dosyaları sunucunuza aktarın. Örnek klasör yolu olarak `/var/www/tikgifty` kullanacağız.
-Projeyi zip ile veya git ile bu klasöre çekin.
-
-### 3. Veritabanı ve Çevre Değişkenleri Ayarı (.env)
-```bash
-sudo -u postgres psql
-CREATE DATABASE tikgifty;
-CREATE USER tikgifty_user WITH ENCRYPTED PASSWORD 'sifre_buraya';
-GRANT ALL PRIVILEGES ON DATABASE tikgifty TO tikgifty_user;
-\q
-```
-Proje dizininde ( `/var/www/tikgifty` ) `.env` dosyası oluşturun:
-```env
-DATABASE_URL="postgresql://tikgifty_user:sifre_buraya@localhost:5432/tikgifty"
-PORT=3000
-```
-Daha sonra tabloları oluşturun:
-```bash
-npx prisma generate
-npx prisma migrate deploy
-```
-
-### 4. Projeyi Derleme ve Başlatma
-Proje dizinindeyken tüm paketleri güncelleyip oluşturduğunuz kodları canlıya derleyin ve başlatın:
-```bash
-npm install
-npm run build
-pm2 start dist/server.js --name tikgifty-backend
-pm2 save
-pm2 startup
-```
-
-### 5. Domain Yönlendirmesi (DNS) Ayarları
-Domain aldığınız firmadan (Godaddy, Cloudflare vb.) DNS yönetim panelinize girip, **Type: A Record** seçerek **`Name: @`** ve **`Name: www`** değerlerini karşısına **VDS Sunucunuzun IP Adresini** yazarak kaydedin.
-
-### 6. Nginx Ayarı (Gelen Ziyaretçileri Siteye Bağla)
-`sudo nano /etc/nginx/sites-available/tikgifty` yazıp aşağıdaki ayarları girin (alan adınızı düzeltin):
-```nginx
-server {
-    listen 80;
-    server_name senindomainin.com www.senindomainin.com;
-
-    root /var/www/tikgifty/dist;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # API ve WebSocket İsteklerini Arka Plana İlet
-    location /api/ { proxy_pass http://localhost:3000; }
-    location /socket.io/ {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
-Ayarı kaydedip Nginx'i yeniden başlatın:
-```bash
-sudo ln -s /etc/nginx/sites-available/tikgifty /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
-```
-Artık domain adresinize girdiğinizde TikGifty (kendi projeniz) çalışacaktır! SSL sertifikası yüklemek için `certbot` kurabilirsiniz.
-
-## 🛠 Kurulum ve Çalıştırma
-
-Projeyi yerel ortamınızda çalıştırmak için:
-
-1.  Bağımlılıkları yükleyin:
-    ```bash
-    npm install
-    ```
-2.  Geliştirme sunucusunu başlatın (Hem frontend hem backend aynı anda çalışır):
-    ```bash
-    npm run dev
-    ```
-3.  Tarayıcınızda `http://localhost:3000` adresine gidin.
+---
+*Bu proje, canlı yayın etkileşimini artırmak için gelişmiş web teknolojileri ile izleyici tepkilerini oyunlaştırma prensibi(Gamification) hedeflenerek tasarlanmıştır.*
