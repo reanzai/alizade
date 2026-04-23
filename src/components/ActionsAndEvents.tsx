@@ -55,7 +55,7 @@ export function ActionsAndEvents({
                 id: Math.random().toString(36).substr(2, 9), 
                 name: 'Yeni Eylem', type: 'alert', screen: 'Screen 1', duration: 5, animation: 'fade',
                 imageUrl: '', soundUrl: '', videoUrl: '', description: 'Custom action',
-                textColor: '#ec4899', fontSize: '36', ttsEnabled: true, ttsTemplate: '{nickname} gönderdi!', ttsVoice: ''
+                textColor: '#ec4899', fontSize: '36', ttsEnabled: true, ttsTemplate: '{nickname} {giftName} gönderdi!'
               }])}
               className="bg-cyan-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-cyan-600 transition-colors"
             >

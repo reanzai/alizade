@@ -56,6 +56,8 @@ async function startServer() {
   // Security & Performance Middleware
   app.use(helmet({
     contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+    crossOriginEmbedderPolicy: false,
+    xFrameOptions: false, // Critical for OBS Browser source and Iframe preview
   }));
   app.use(compression());
   app.use(morgan('combined'));
@@ -130,10 +132,17 @@ async function startServer() {
 
     if (!token) return res.status(401).json({ error: "Unauthorized" });
 
-    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+    jwt.verify(token, JWT_SECRET, async (err: any, decoded: any) => {
       if (err) return res.status(403).json({ error: "Forbidden" });
-      req.user = user;
-      next();
+      
+      try {
+        const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+        if (!user) return res.status(403).json({ error: "User not found or deleted" });
+        req.user = user;
+        next();
+      } catch (dbErr) {
+        return res.status(500).json({ error: "Internal Server Error" });
+      }
     });
   };
 
@@ -288,6 +297,8 @@ async function startServer() {
     });
 
     socket.on("sync-state", (data: { username: string, state: any }) => {
+      // Security: Only the user who owns the TikTok connection (The Dashboard) can send state syncs.
+      if (socket.data.isHostFor !== data.username) return;
       socket.to(`room_${data.username}`).emit("state-sync", data.state);
     });
 
@@ -302,9 +313,13 @@ async function startServer() {
           try {
             const decoded: any = jwt.verify(token, JWT_SECRET);
             userId = decoded.id;
+            socket.data.isHostFor = username; // Mark as authorized host for state syncing
           } catch (e) {
             console.warn("Invalid token provided to connect-tiktok");
+            return socket.emit("tiktok-error", "Authentication failed"); // Fail fast if token is bad
           }
+        } else if (!process.env.PUBLIC_DEMO_MODE) {
+           socket.data.isHostFor = username; // If not in strict mode, allow them to act as host
         }
 
         if (connections.has(socket.id)) {
