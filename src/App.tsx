@@ -503,7 +503,6 @@ export default function App() {
   const pixelConquestRef = useRef(pixelConquest);
   const turkeyMapGameRef = useRef(turkeyMapGame);
   const usernameRef = useRef(username);
-
   useEffect(() => {
     usernameRef.current = username;
   }, [username]);
@@ -997,6 +996,22 @@ export default function App() {
     'gifts': { id: 'gifts', label: 'Gift List', assetUrl: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJ6Znd6Znd6Znd6Znd6Znd6Znd6Znd6Znd6Znd6Znd6Znd6Znd6JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/3o7TKVUn7iM8FMEU24/giphy.gif#money', enabled: true }
   });
 
+  const layoutRef = useRef(layout);
+  const actionsRef = useRef(actions);
+  const giftSettingsRef = useRef(giftSettings);
+  const listSettingsRef = useRef(listSettings);
+
+  useEffect(() => {
+    layoutRef.current = layout;
+    actionsRef.current = actions;
+    giftSettingsRef.current = giftSettings;
+    listSettingsRef.current = listSettings;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get('mode') && username && socket) {
+      socket.emit('sync-state', { username, state: { type: 'settings', data: { layout, actions, giftSettings, listSettings } } });
+    }
+  }, [layout, actions, giftSettings, listSettings, username, socket]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
@@ -1008,10 +1023,20 @@ export default function App() {
 
     if (urlUsername) {
       setUsername(urlUsername);
-    }
-
-    // Fetch settings from backend (only if not self-hosted or if we want public settings)
-    if (!IS_SELF_HOSTED) {
+      // Fetch public overlay settings
+      fetch(`/api/settings/public/${urlUsername}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data) {
+             if (data.layout && Object.keys(data.layout).length > 0) setLayout(data.layout);
+             if (data.actions && data.actions.length > 0) setActions(data.actions);
+             if (data.giftSettings && Object.keys(data.giftSettings).length > 0) setGiftSettings(data.giftSettings);
+             if (data.listSettings && Object.keys(data.listSettings).length > 0) setListSettings(data.listSettings);
+             if (data.pixelConquest && Object.keys(data.pixelConquest).length > 0) setPixelConquest(data.pixelConquest);
+          }
+        })
+        .catch(err => console.error('Failed to fetch public settings:', err));
+    } else if (!IS_SELF_HOSTED) {
       fetch('/api/settings')
         .then(async res => {
           const contentType = res.headers.get("content-type");
@@ -1039,7 +1064,10 @@ export default function App() {
       overlayPresets: savedPresets,
       pixelConquest,
       events: eventTriggers,
-      timers
+      timers,
+      layout,
+      giftSettings,
+      listSettings
     };
 
     fetch('/api/settings', {
@@ -1055,6 +1083,14 @@ export default function App() {
     })
     .catch(err => console.error('Failed to save settings:', err));
   };
+
+  useEffect(() => {
+    if (isAuthLoading) return;
+    const timeoutId = setTimeout(() => {
+      if (authToken) saveSettings({});
+    }, 1500);
+    return () => clearTimeout(timeoutId);
+  }, [actions, savedPresets, pixelConquest, eventTriggers, timers, layout, giftSettings, listSettings, isAuthLoading, authToken]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const ttsQueueRef = useRef<{text: string, voiceName?: string, soundUrl?: string}[]>([]);
@@ -1130,10 +1166,14 @@ export default function App() {
             return;
           }
           
-          setUser({ uid: userData.id, email: userData.email, displayName: userData.displayName, photoURL: userData.photoURL });
+          setUser({ uid: userData.id, email: userData.email, displayName: userData.displayName, photoURL: userData.photoURL, tiktokUsername: userData.tiktokUsername });
           setUserProfile({ isSubscribed: userData.isSubscribed, plan: userData.plan, role: userData.role });
+          if (userData.tiktokUsername) {
+            setUsername(userData.tiktokUsername);
+          }
           
           if (settingsData) {
+            if (settingsData.layout && Object.keys(settingsData.layout).length > 0) setLayout(settingsData.layout);
             if (settingsData.listSettings && Object.keys(settingsData.listSettings).length > 0) setListSettings(settingsData.listSettings);
             if (settingsData.giftSettings && Object.keys(settingsData.giftSettings).length > 0) setGiftSettings(settingsData.giftSettings);
             if (settingsData.beybladeLeaderboard) setBeybladeGame(prev => ({ ...prev, leaderboard: settingsData.beybladeLeaderboard }));
@@ -1440,6 +1480,7 @@ export default function App() {
         newSocket.emit('sync-state', { username: currentUsername, state: { type: 'beybladeGame', data: beybladeGameRef.current } });
         newSocket.emit('sync-state', { username: currentUsername, state: { type: 'pixelConquest', data: pixelConquestRef.current } });
         newSocket.emit('sync-state', { username: currentUsername, state: { type: 'turkeyMapGame', data: turkeyMapGameRef.current } });
+        newSocket.emit('sync-state', { username: currentUsername, state: { type: 'settings', data: { layout: layoutRef.current, actions: actionsRef.current, giftSettings: giftSettingsRef.current, listSettings: listSettingsRef.current } } });
       }
     });
 
@@ -1449,6 +1490,12 @@ export default function App() {
       if (stateObj.type === 'beybladeGame') setBeybladeGame(stateObj.data);
       if (stateObj.type === 'pixelConquest') setPixelConquest(stateObj.data);
       if (stateObj.type === 'turkeyMapGame') setTurkeyMapGame(stateObj.data);
+      if (stateObj.type === 'settings') {
+        if (stateObj.data.layout) setLayout(stateObj.data.layout);
+        if (stateObj.data.actions) setActions(stateObj.data.actions);
+        if (stateObj.data.giftSettings) setGiftSettings(stateObj.data.giftSettings);
+        if (stateObj.data.listSettings) setListSettings(stateObj.data.listSettings);
+      }
     });
 
     newSocket.on('tiktok-connected', (data) => {
@@ -2809,6 +2856,7 @@ export default function App() {
               timers={timers} 
               setTimers={setTimers} 
               handleTikTokEvent={handleTikTokEvent} 
+              connectedUsername={user?.tiktokUsername || user?.displayName || usernameRef.current || null}
             />
           )}
 
@@ -2821,7 +2869,12 @@ export default function App() {
                 </div>
                 <button 
                   onClick={() => {
-                    const url = `${window.location.origin}${window.location.pathname}?mode=overlay`;
+                    const username = user?.tiktokUsername || user?.displayName || usernameRef.current;
+                    if (!username) {
+                      alert('Önce bir TikTok hesabına bağlanmalısınız.');
+                      return;
+                    }
+                    const url = `${window.location.origin}/?mode=overlay&username=${username}`;
                     navigator.clipboard.writeText(url);
                     alert('Overlay URL copied to clipboard!');
                   }}
@@ -3579,6 +3632,43 @@ export default function App() {
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-6">
+                  <Section title="TikTok Integration" description="Connect to your TikTok live stream">
+                    <div className="bg-[#111317] border border-white/5 rounded-xl p-6 space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest">TikTok Username</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            value={username} 
+                            onChange={(e) => setUsername(e.target.value)} 
+                            placeholder="@username" 
+                            className="flex-1 bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-cyan-500 transition-colors"
+                          />
+                          <button 
+                            onClick={() => {
+                              if (isConnected) {
+                                socket?.emit('disconnect-tiktok');
+                                setIsConnected(false);
+                              } else {
+                                setIsConnecting(true);
+                                socket?.emit('connect-tiktok', username, authToken);
+                              }
+                            }} 
+                            disabled={isConnecting || !username}
+                            className={`px-6 py-3 rounded-xl font-bold text-sm transition-colors disabled:opacity-50 ${isConnected ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' : 'bg-cyan-500 text-black hover:bg-cyan-400'}`}
+                          >
+                            {isConnecting ? 'Connecting...' : isConnected ? 'Disconnect' : 'Connect'}
+                          </button>
+                        </div>
+                        {isConnected && (
+                          <p className="text-xs text-green-400 mt-2 flex items-center gap-1">
+                            <Check size={12} /> Connected correctly. Remember to go live!
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </Section>
+
                   <Section title="General Preferences" description="Basic application settings">
                     <div className="bg-[#111317] border border-white/5 rounded-xl p-6 space-y-6">
                       <div className="flex items-center justify-between">

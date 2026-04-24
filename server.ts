@@ -11,8 +11,7 @@ import { fileURLToPath } from "url";
 import cors from "cors";
 import fs from "fs";
 
-import pkg from '@prisma/client';
-const { PrismaClient } = pkg;
+import { PrismaClient } from '@prisma/client';
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 
@@ -243,6 +242,34 @@ async function startServer() {
   });
 
   // --- Settings Routes ---
+  app.get("/api/settings/public/:username", async (req, res) => {
+    try {
+      const user = await prisma.user.findFirst({
+        where: { tiktokUsername: req.params.username }
+      });
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      const settings = await prisma.settings.findUnique({
+        where: { userId: user.id }
+      });
+      // We only return safe settings for the overlay
+      if (settings) {
+         res.json({
+           layout: settings.layout,
+           actions: settings.actions,
+           giftSettings: settings.giftSettings,
+           listSettings: settings.listSettings,
+           pixelConquest: settings.pixelConquest
+         });
+      } else {
+         res.json({});
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/settings", authenticateToken, async (req: any, res) => {
     try {
       const settings = await prisma.settings.findUnique({
@@ -357,7 +384,7 @@ async function startServer() {
             if (profilePic && userId) {
               await prisma.user.update({
                 where: { id: userId },
-                data: { photoURL: profilePic, displayName: username }
+                data: { photoURL: profilePic, tiktokUsername: username }
               });
             }
           } catch (e) {

@@ -26,12 +26,13 @@ interface ActionsAndEventsProps {
   timers: EventTimer[];
   setTimers: React.Dispatch<React.SetStateAction<EventTimer[]>>;
   handleTikTokEvent: (data: any) => void;
+  connectedUsername: string | null;
 }
 
 export function ActionsAndEvents({
   actions, setActions, setEditingAction, 
   eventTriggers, setEventTriggers, setEditingTrigger,
-  timers, setTimers, handleTikTokEvent
+  timers, setTimers, handleTikTokEvent, connectedUsername
 }: ActionsAndEventsProps) {
   const [selectedGift, setSelectedGift] = useState('Rose');
 
@@ -154,10 +155,16 @@ export function ActionsAndEvents({
                   <span className="text-xs font-bold text-gray-300">Ekran {num}</span>
                 </div>
                 <div className="flex-1 max-w-lg bg-black/60 rounded px-3 py-2 border border-white/10 font-mono text-[10px] text-cyan-400 overflow-x-auto whitespace-nowrap">
-                  https://tikgifty.com/overlay?mode=actions&screen=Screen%20{num}
+                  {connectedUsername ? `${window.location.origin}/?mode=actions&screen=Screen%20${num}&username=${connectedUsername}` : 'Lütfen önce TikTok hesabınıza bağlanın.'}
                 </div>
                 <button 
-                  onClick={() => navigator.clipboard.writeText(`https://tikgifty.com/overlay?mode=actions&screen=Screen%20${num}`)}
+                  onClick={() => {
+                    if (connectedUsername) {
+                      navigator.clipboard.writeText(`${window.location.origin}/?mode=actions&screen=Screen%20${num}&username=${connectedUsername}`);
+                    } else {
+                      alert('Önce TikTok hesabınıza bağlanmalısınız!');
+                    }
+                  }}
                   className="p-2 bg-white/5 rounded hover:bg-white/10 text-gray-400 hover:text-white"
                   title="Kopyala"
                 >
